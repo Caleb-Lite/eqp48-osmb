@@ -1,5 +1,7 @@
 # Sandstone Miner
 
+Mines Sandstone in the Quarry and deposits them into the grinder to produce Buckets of Sand.
+
 ## Getting started:
 
 **Start in the Quarry with a pickaxe equipped**
@@ -9,11 +11,6 @@
 
 ## For the best experience:
 
-**Zoom your camera all the way out**
-
-![img_1.png](img/zoom.png)
-
-
-**Equip a Circlet of Water** to mitigate desert heat
+**Equip a Circlet of Water to mitigate desert heat**
 
 ![img_2.png](img/circlet.png)

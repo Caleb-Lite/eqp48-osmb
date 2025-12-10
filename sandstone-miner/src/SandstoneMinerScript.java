@@ -9,6 +9,7 @@ import com.osmb.api.utils.timing.Timer;
 import com.osmb.api.utils.UIResult;
 import com.osmb.api.walker.WalkConfig;
 import com.osmb.api.shape.Rectangle;
+import com.osmb.api.shape.Polygon;
 import com.osmb.api.visual.drawing.Canvas;
 
 import java.util.Arrays;
@@ -27,7 +28,7 @@ import java.awt.Color;
   name = "Sandstone Miner",
   description = "Mines sandstone rocks in the quarry.",
   skillCategory = SkillCategory.MINING,
-  version = 1.1
+  version = 1.0
 )
 public class SandstoneMinerScript extends Script {
   private static final String TARGET_ROCK_NAME = "Sandstone rocks";
@@ -115,8 +116,8 @@ public class SandstoneMinerScript extends Script {
       return random(400, 700);
     }
 
-    if (!sandstoneRock.interact("Mine")) {
-      log(getClass(), "Failed to click Mine on sandstone rock.");
+    if (!tapRock(sandstoneRock)) {
+      log(getClass(), "Failed to tap sandstone rock.");
       return random(400, 700);
     }
 
@@ -290,6 +291,17 @@ public class SandstoneMinerScript extends Script {
 
   private final Set<WorldPosition> waitingRespawn = new HashSet<>();
   private boolean lastMineGainedXp = false;
+
+  private boolean tapRock(RSObject rock) {
+    if (rock == null) {
+      return false;
+    }
+    Polygon hull = getSceneProjector().getConvexHull(rock);
+    if (hull == null || hull.numVertices() == 0) {
+      return false;
+    }
+    return getFinger().tapGameScreen(hull);
+  }
 
   @Override
   public void onPaint(Canvas c) {
