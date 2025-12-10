@@ -6,6 +6,7 @@ import com.osmb.api.script.ScriptDefinition;
 import com.osmb.api.script.SkillCategory;
 import com.osmb.api.ui.component.tabs.skill.SkillType;
 import com.osmb.api.utils.timing.Timer;
+import com.osmb.api.utils.UIResult;
 import com.osmb.api.walker.WalkConfig;
 import com.osmb.api.shape.Rectangle;
 import com.osmb.api.visual.drawing.Canvas;
@@ -26,7 +27,7 @@ import java.awt.Color;
   name = "Sandstone Miner",
   description = "Mines sandstone rocks in the quarry.",
   skillCategory = SkillCategory.MINING,
-  version = 1.0
+  version = 1.1
 )
 public class SandstoneMinerScript extends Script {
   private static final String TARGET_ROCK_NAME = "Sandstone rocks";
@@ -38,6 +39,20 @@ public class SandstoneMinerScript extends Script {
 
   public SandstoneMinerScript(Object scriptCore) {
     super(scriptCore);
+  }
+
+  @Override
+  public void onStart() {
+    var settings = getWidgetManager().getSettings();
+    UIResult<Integer> zoomResult = settings.getZoomLevel();
+    boolean alreadyMaxZoom = zoomResult.isFound() && zoomResult.get() == 0;
+
+    if (!alreadyMaxZoom) {
+      boolean zoomed = settings.setZoomLevel(0);
+      if (!zoomed) {
+        log(getClass(), "Failed to set zoom level to maximum at start.");
+      }
+    }
   }
 
   // Limit searches to the quarry region to speed up object lookups
