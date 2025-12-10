@@ -21,16 +21,16 @@ import java.util.Set;
 import java.util.HashSet;
 import java.awt.Color;
 import java.awt.Font;
-import java.awt.Color;
 
 @ScriptDefinition(
   author = "eqp48",
   name = "Sandstone Miner",
   description = "Mines sandstone rocks in the quarry.",
   skillCategory = SkillCategory.MINING,
-  version = 1.0
+  version = 1.1
 )
 public class SandstoneMinerScript extends Script {
+  private static final String VERSION = "1.1";
   private static final String TARGET_ROCK_NAME = "Sandstone rocks";
   private static final WorldPosition GRINDER_POS = new WorldPosition(3152, 2909, 0);
   private static final WorldPosition SANDSTONE_POS = new WorldPosition(3167, 2908, 0);
@@ -310,14 +310,16 @@ public class SandstoneMinerScript extends Script {
     int width = 180;
     int padding = 8;
     int lineHeight = 16;
-    int height = padding * 2 + lineHeight * 2;
+    int height = padding * 2 + lineHeight * 3;
 
     // Background panel for readability
     c.fillRect(x, y, width, height, new Color(10, 10, 10, 190).getRGB(), 1);
     c.drawRect(x, y, width, height, Color.WHITE.getRGB());
 
     int textY = y + padding + 12;
-    c.drawText("Sandstone mined: " + sandstoneMined, x + padding, textY, Color.WHITE.getRGB(), new Font("Arial", Font.BOLD, 12));
+    c.drawText("Sandstone Miner - v" + VERSION, x + padding, textY, Color.YELLOW.getRGB(), new Font("Arial", Font.BOLD, 12));
+    textY += lineHeight;
+    c.drawText("Sandstone: " + sandstoneMined, x + padding, textY, Color.WHITE.getRGB(), new Font("Arial", Font.BOLD, 12));
     textY += lineHeight;
     c.drawText("Runtime: " + formatRuntime(System.currentTimeMillis() - startTimeMs), x + padding, textY, Color.LIGHT_GRAY.getRGB(), new Font("Arial", Font.PLAIN, 12));
   }
