@@ -6,6 +6,7 @@ import com.osmb.api.script.Script;
 import com.osmb.api.script.ScriptDefinition;
 import com.osmb.api.script.SkillCategory;
 import com.osmb.api.ui.component.tabs.skill.SkillType;
+import com.osmb.api.ui.component.tabs.skill.SkillsTabComponent;
 import com.osmb.api.utils.timing.Timer;
 import com.osmb.api.utils.UIResult;
 import com.osmb.api.item.ItemID;
@@ -23,6 +24,8 @@ import com.osmb.api.visual.image.Image;
 import com.osmb.api.visual.image.ImageSearchResult;
 import com.osmb.api.visual.image.SearchableImage;
 import com.osmb.api.trackers.experience.XPTracker;
+import utils.Webhook;
+import utils.Webhook.WebhookData;
 
 import static com.osmb.api.visual.ocr.fonts.Font.SMALL_FONT;
 
@@ -42,10 +45,10 @@ import java.awt.Font;
   name = "Sandstone Miner",
   description = "Mines sandstone rocks in the quarry.",
   skillCategory = SkillCategory.MINING,
-  version = 1.1
+  version = 1.3
 )
 public class SandstoneMinerScript extends Script {
-  private static final String VERSION = "1.1";
+  private static final String VERSION = "1.3";
   private static final String TARGET_ROCK_NAME = "Sandstone rocks";
   private static final WorldPosition GRINDER_POS = new WorldPosition(3152, 2909, 0);
   private static final WorldPosition SANDSTONE_POS = new WorldPosition(3167, 2908, 0);
@@ -64,6 +67,9 @@ public class SandstoneMinerScript extends Script {
   private Integer lastWaterskinCharges = null;
   private final List<BuffOverlay> waterskinOverlays = new ArrayList<>();
   private final List<WaterskinTemplate> waterskinTemplates = new ArrayList<>();
+  private double startMiningXp = 0;
+  private int startMiningLevel = 0;
+  private Webhook webhook;
 
   public SandstoneMinerScript(Object scriptCore) {
     super(scriptCore);
@@ -74,6 +80,7 @@ public class SandstoneMinerScript extends Script {
         waterskinTemplates.add(template);
       }
     }
+    webhook = new Webhook(this::buildWebhookData, this::log);
   }
 
   @Override
@@ -85,6 +92,10 @@ public class SandstoneMinerScript extends Script {
     if (!alreadyMaxZoom) {
       settings.setZoomLevel(0);
     }
+
+    startMiningXp = getMiningXp();
+    startMiningLevel = getMiningLevel();
+    webhook.showDialog();
   }
 
   // Limit searches to the quarry region to speed up object lookups
@@ -104,6 +115,13 @@ public class SandstoneMinerScript extends Script {
       ItemID.WATER_RUNE,
       ItemID.FIRE_RUNE
     ));
+    if (!webhook.isSubmitted()) {
+      webhook.ensureDialogVisible();
+      return 500;
+    }
+    webhook.ensureStarted(() -> webhook.enqueueEvent("Stopped"));
+    webhook.queuePeriodicWebhookIfDue();
+    webhook.dispatchPendingWebhooks();
     if (inventory == null) {
       return 800;
     }
@@ -319,6 +337,18 @@ public class SandstoneMinerScript extends Script {
     return 0;
   }
 
+  private int getMiningLevel() {
+    try {
+      SkillsTabComponent.SkillLevel skill = getWidgetManager().getSkillTab().getSkillLevel(SkillType.MINING);
+      if (skill != null) {
+        return skill.getLevel();
+      }
+    } catch (Exception e) {
+      return 0;
+    }
+    return 0;
+  }
+
   private final Set<WorldPosition> waitingRespawn = new HashSet<>();
   private boolean lastMineGainedXp = false;
 
@@ -473,23 +503,30 @@ public class SandstoneMinerScript extends Script {
 
   @Override
   public void onPaint(Canvas c) {
-    int x = 6;
-    int y = 32;
-    int width = 180;
-    int padding = 8;
-    int lineHeight = 16;
-    int height = padding * 2 + lineHeight * 4;
+    if (c == null) {
+      return;
+    }
+    try {
+      int x = 6;
+      int y = 32;
+      int width = 180;
+      int padding = 8;
+      int lineHeight = 16;
+      int height = padding * 2 + lineHeight * 4;
 
-    // Background panel for readability
-    c.fillRect(x, y, width, height, new Color(10, 10, 10, 190).getRGB(), 1);
-    c.drawRect(x, y, width, height, Color.WHITE.getRGB());
+      // Background panel for readability
+      c.fillRect(x, y, width, height, new Color(10, 10, 10, 190).getRGB(), 1);
+      c.drawRect(x, y, width, height, Color.WHITE.getRGB());
 
-    int textY = y + padding + 12;
-    c.drawText("Sandstone Miner - v" + VERSION, x + padding, textY, Color.YELLOW.getRGB(), new Font("Arial", Font.BOLD, 12));
-    textY += lineHeight;
-    c.drawText("Sandstone: " + sandstoneMined, x + padding, textY, Color.WHITE.getRGB(), new Font("Arial", Font.BOLD, 12));
-    textY += lineHeight;
-    c.drawText("Runtime: " + formatRuntime(System.currentTimeMillis() - startTimeMs), x + padding, textY, Color.LIGHT_GRAY.getRGB(), new Font("Arial", Font.PLAIN, 12));
+      int textY = y + padding + 12;
+      c.drawText("Sandstone Miner - v" + VERSION, x + padding, textY, Color.YELLOW.getRGB(), new Font("Arial", Font.BOLD, 12));
+      textY += lineHeight;
+      c.drawText("Sandstone: " + sandstoneMined, x + padding, textY, Color.WHITE.getRGB(), new Font("Arial", Font.BOLD, 12));
+      textY += lineHeight;
+      c.drawText("Runtime: " + formatRuntime(System.currentTimeMillis() - startTimeMs), x + padding, textY, Color.LIGHT_GRAY.getRGB(), new Font("Arial", Font.PLAIN, 12));
+    } catch (Exception e) {
+      log("PAINT", "Skipping paint: " + e.getMessage());
+    }
   }
 
   private String formatRuntime(long ms) {
@@ -499,6 +536,27 @@ public class SandstoneMinerScript extends Script {
     long minutes = (totalSeconds % 3600) / 60;
     long seconds = totalSeconds % 60;
     return String.format("%02d:%02d:%02d", hours, minutes, seconds);
+  }
+
+  private WebhookData buildWebhookData() {
+    double currentXp = getMiningXp();
+    int currentLevel = getMiningLevel();
+    long runtimeMs = System.currentTimeMillis() - startTimeMs;
+    long xpGained = Math.max(0, Math.round(currentXp - startMiningXp));
+    int levelsGained = Math.max(0, currentLevel - startMiningLevel);
+    String runtimeText = formatRuntime(runtimeMs);
+    int interval = webhook.getIntervalMinutes();
+    return new WebhookData(sandstoneMined, xpGained, levelsGained, runtimeText, interval);
+  }
+
+  @Override
+  public void stop() {
+    try {
+      webhook.enqueueEvent("Stopped");
+      webhook.dispatchPendingWebhooks();
+    } catch (Exception ignored) {
+    }
+    super.stop();
   }
 
   private static class WaterskinTemplate {
