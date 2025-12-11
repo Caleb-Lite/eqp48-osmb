@@ -1,4 +1,5 @@
 import com.osmb.api.item.ItemGroupResult;
+import com.osmb.api.item.ZoomType;
 import com.osmb.api.location.position.types.WorldPosition;
 import com.osmb.api.scene.RSObject;
 import com.osmb.api.script.Script;
@@ -7,11 +8,25 @@ import com.osmb.api.script.SkillCategory;
 import com.osmb.api.ui.component.tabs.skill.SkillType;
 import com.osmb.api.utils.timing.Timer;
 import com.osmb.api.utils.UIResult;
+import com.osmb.api.item.ItemID;
+import com.osmb.api.ui.spellbook.LunarSpellbook;
+import com.osmb.api.ui.spellbook.SpellNotFoundException;
+import com.osmb.api.ui.tabs.Spellbook;
+import com.osmb.api.ui.overlay.BuffOverlay;
 import com.osmb.api.walker.WalkConfig;
+import com.osmb.api.visual.color.ColorModel;
+import com.osmb.api.visual.color.tolerance.impl.SingleThresholdComparator;
 import com.osmb.api.shape.Rectangle;
 import com.osmb.api.shape.Polygon;
 import com.osmb.api.visual.drawing.Canvas;
+import com.osmb.api.visual.image.Image;
+import com.osmb.api.visual.image.ImageSearchResult;
+import com.osmb.api.visual.image.SearchableImage;
+import com.osmb.api.trackers.experience.XPTracker;
 
+import static com.osmb.api.visual.ocr.fonts.Font.SMALL_FONT;
+
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Collections;
@@ -34,12 +49,31 @@ public class SandstoneMinerScript extends Script {
   private static final String TARGET_ROCK_NAME = "Sandstone rocks";
   private static final WorldPosition GRINDER_POS = new WorldPosition(3152, 2909, 0);
   private static final WorldPosition SANDSTONE_POS = new WorldPosition(3167, 2908, 0);
+  private static final int[] WATERSKIN_IDS = new int[] {
+    ItemID.WATERSKIN4,
+    ItemID.WATERSKIN3,
+    ItemID.WATERSKIN2,
+    ItemID.WATERSKIN1,
+    ItemID.WATERSKIN0
+  };
 
   private long startTimeMs = System.currentTimeMillis();
   private int sandstoneMined = 0;
+  private boolean humidifyCast = false;
+  private long lastHumidifyCastMs = 0;
+  private Integer lastWaterskinCharges = null;
+  private final List<BuffOverlay> waterskinOverlays = new ArrayList<>();
+  private final List<WaterskinTemplate> waterskinTemplates = new ArrayList<>();
 
   public SandstoneMinerScript(Object scriptCore) {
     super(scriptCore);
+    for (int itemId : WATERSKIN_IDS) {
+      waterskinOverlays.add(new BuffOverlay(this, itemId));
+      WaterskinTemplate template = buildWaterskinTemplate(itemId);
+      if (template != null) {
+        waterskinTemplates.add(template);
+      }
+    }
   }
 
   @Override
@@ -49,10 +83,7 @@ public class SandstoneMinerScript extends Script {
     boolean alreadyMaxZoom = zoomResult.isFound() && zoomResult.get() == 0;
 
     if (!alreadyMaxZoom) {
-      boolean zoomed = settings.setZoomLevel(0);
-      if (!zoomed) {
-        log(getClass(), "Failed to set zoom level to maximum at start.");
-      }
+      settings.setZoomLevel(0);
     }
   }
 
@@ -68,10 +99,25 @@ public class SandstoneMinerScript extends Script {
       startTimeMs = System.currentTimeMillis();
     }
 
-    ItemGroupResult inventory = getWidgetManager().getInventory().search(Collections.emptySet());
+    ItemGroupResult inventory = getWidgetManager().getInventory().search(Set.of(
+      ItemID.ASTRAL_RUNE,
+      ItemID.WATER_RUNE,
+      ItemID.FIRE_RUNE
+    ));
     if (inventory == null) {
-      log(getClass(), "Inventory could not be read; waiting...");
       return 800;
+    }
+
+    Integer waterskinCharges = getWaterskinCharges();
+
+    // Highest priority in-loop: cast Humidify once when available
+    if (shouldCastHumidify(waterskinCharges, inventory)) {
+      boolean cast = castHumidify();
+      if (cast) {
+        humidifyCast = true;
+        lastHumidifyCastMs = System.currentTimeMillis();
+        return random(400, 700);
+      }
     }
 
     if (inventory.isFull()) {
@@ -80,7 +126,6 @@ public class SandstoneMinerScript extends Script {
 
     WorldPosition myPos = getWorldPosition();
     if (myPos == null) {
-      log(getClass(), "Player position unavailable; waiting...");
       return 800;
     }
 
@@ -97,7 +142,6 @@ public class SandstoneMinerScript extends Script {
     );
 
     if (sandstoneRocks == null || sandstoneRocks.isEmpty()) {
-      log(getClass(), "No sandstone rocks visible; walking back to sandstone tile.");
       walkToSandstoneHome();
       return random(500, 800);
     }
@@ -106,18 +150,15 @@ public class SandstoneMinerScript extends Script {
     RSObject sandstoneRock = sandstoneRocks.get(0);
 
     if (sandstoneRock == null) {
-      log(getClass(), "No sandstone rocks visible; walking back to sandstone tile.");
       walkToSandstoneHome();
       return random(500, 800);
     }
 
     if (!waitForPlayerIdle()) {
-      log(getClass(), "Player still moving or animating; waiting before mining.");
       return random(400, 700);
     }
 
     if (!tapRock(sandstoneRock)) {
-      log(getClass(), "Failed to tap sandstone rock.");
       return random(400, 700);
     }
 
@@ -126,11 +167,7 @@ public class SandstoneMinerScript extends Script {
       waitingRespawn.add(sandstoneRock.getWorldPosition());
     }
 
-    if (!mined) {
-      log(getClass(), "Mining attempt ended without XP gain or movement; re-scanning.");
-    }
-
-    return mined ? random(75, 100) : random(250, 500);
+    return mined ? random(120, 240) : random(250, 500);
   }
 
   private boolean hasMineAction(RSObject object) {
@@ -155,11 +192,9 @@ public class SandstoneMinerScript extends Script {
     // If grinder is already on-screen and interactable, click it immediately
     if (grinder != null && grinder.isInteractableOnScreen()) {
       if (!grinder.interact("Deposit")) {
-        log(getClass(), "Failed to click Deposit on grinder.");
         return random(500, 800);
       }
     } else {
-      log(getClass(), "Walking to grinder to deposit.");
       WalkConfig config = new WalkConfig.Builder()
         .breakCondition(() -> {
           RSObject g = findGrinder();
@@ -170,7 +205,6 @@ public class SandstoneMinerScript extends Script {
 
       grinder = findGrinder();
       if (grinder == null || !grinder.isInteractableOnScreen() || !grinder.interact("Deposit")) {
-        log(getClass(), "Failed to click Deposit on grinder after walking.");
         return random(500, 800);
       }
     }
@@ -179,10 +213,6 @@ public class SandstoneMinerScript extends Script {
       ItemGroupResult inv = getWidgetManager().getInventory().search(Collections.emptySet());
       return inv == null || !inv.isFull();
     }, 8_000);
-
-    if (!deposited) {
-      log(getClass(), "Deposit interaction did not clear inventory; retrying soon.");
-    }
 
     return random(400, 700);
   }
@@ -283,7 +313,7 @@ public class SandstoneMinerScript extends Script {
       return 0;
     }
     Object tracker = trackers.get(SkillType.MINING);
-    if (tracker instanceof com.osmb.api.trackers.experience.XPTracker xpTracker) {
+    if (tracker instanceof XPTracker xpTracker) {
       return xpTracker.getXp();
     }
     return 0;
@@ -303,6 +333,144 @@ public class SandstoneMinerScript extends Script {
     return getFinger().tapGameScreen(hull);
   }
 
+  private boolean canCastHumidify(ItemGroupResult inventory) {
+    try {
+      var spellbook = getWidgetManager().getSpellbook();
+      if (spellbook == null) {
+        return false;
+      }
+
+      ItemGroupResult inv = inventory != null ? inventory : getWidgetManager().getInventory().search(Set.of(
+        ItemID.ASTRAL_RUNE,
+        ItemID.WATER_RUNE,
+        ItemID.FIRE_RUNE
+      ));
+      if (inv == null) {
+        return false;
+      }
+
+      int astral = inv.getAmount(ItemID.ASTRAL_RUNE);
+      int water = inv.getAmount(ItemID.WATER_RUNE);
+      int fire = inv.getAmount(ItemID.FIRE_RUNE);
+      boolean hasAstral = astral >= 1;
+      boolean hasWater = water >= 3;
+      boolean hasFire = fire >= 1;
+      return hasAstral && hasWater && hasFire;
+    } catch (RuntimeException e) {
+      return false;
+    }
+  }
+
+  private boolean castHumidify() {
+    try {
+      Spellbook spellbook = getWidgetManager().getSpellbook();
+      if (spellbook == null) {
+        return false;
+      }
+      spellbook.open();
+      return spellbook.selectSpell(LunarSpellbook.HUMIDIFY, null);
+    } catch (SpellNotFoundException e) {
+      return false;
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
+  private Integer getWaterskinChargesFromBuffOverlay() {
+    for (BuffOverlay overlay : waterskinOverlays) {
+      String text = overlay.getBuffText();
+      Integer parsed = parseWaterskinBuffText(text);
+      if (parsed != null) {
+        lastWaterskinCharges = parsed;
+        return parsed;
+      }
+    }
+    return null;
+  }
+
+  private WaterskinTemplate buildWaterskinTemplate(int itemId) {
+    try {
+      Image itemImage = getItemManager().getItemImage(itemId, 999, ZoomType.SIZE_1, 0xFF00FF);
+      if (itemImage == null) {
+        return null;
+      }
+      // Crop similarly to BuffOverlay to avoid border noise
+      itemImage = itemImage.subImage(0, 0, itemImage.getWidth() - 5, itemImage.getHeight() - 11);
+      SearchableImage searchable = itemImage.toSearchableImage(new SingleThresholdComparator(25), ColorModel.RGB);
+      // Bottom strip where the number appears
+      Rectangle digitArea = new Rectangle(0, Math.max(0, itemImage.getHeight() - 12), itemImage.getWidth(), 12);
+      return new WaterskinTemplate(searchable, digitArea);
+    } catch (Exception e) {
+      return null;
+    }
+  }
+
+  private Integer getWaterskinChargesFromImageSearch() {
+    try {
+      for (WaterskinTemplate template : waterskinTemplates) {
+        ImageSearchResult result = getImageAnalyzer().findLocation(template.icon());
+        if (result == null) {
+          continue;
+        }
+        Rectangle bounds = result.getBounds();
+        Rectangle numberBounds = new Rectangle(
+          bounds.x + template.digitArea.x,
+          bounds.y + template.digitArea.y,
+          template.digitArea.width,
+          template.digitArea.height
+        );
+        String text = getOCR().getText(SMALL_FONT, numberBounds, new int[]{-1, -65536});
+        Integer parsed = parseWaterskinBuffText(text);
+        if (parsed != null) {
+          lastWaterskinCharges = parsed;
+          return parsed;
+        }
+      }
+    } catch (Exception e) {
+      // Swallow and fall back to null to avoid interrupting script loop
+    }
+    return null;
+  }
+
+  private Integer getWaterskinCharges() {
+    Integer overlay = getWaterskinChargesFromBuffOverlay();
+    if (overlay != null) {
+      return overlay;
+    }
+    return getWaterskinChargesFromImageSearch();
+  }
+
+  private Integer parseWaterskinBuffText(String buffText) {
+    if (buffText == null || buffText.isEmpty()) {
+      return null;
+    }
+    buffText = buffText.trim();
+    for (int i = 0; i < buffText.length(); i++) {
+      char c = buffText.charAt(i);
+      if (Character.isDigit(c)) {
+        int value = Character.getNumericValue(c);
+        if (value >= 0 && value <= 4) {
+          return value;
+        }
+      }
+    }
+    return null;
+  }
+
+  private boolean shouldCastHumidify(Integer waterskinCharges, ItemGroupResult inventory) {
+    if (!canCastHumidify(inventory)) {
+      return false;
+    }
+    long now = System.currentTimeMillis();
+    if (now - lastHumidifyCastMs < 3_000) {
+      return false;
+    }
+    if (waterskinCharges == null) {
+      return false;
+    }
+    return waterskinCharges == 0;
+  }
+
   @Override
   public void onPaint(Canvas c) {
     int x = 6;
@@ -310,7 +478,7 @@ public class SandstoneMinerScript extends Script {
     int width = 180;
     int padding = 8;
     int lineHeight = 16;
-    int height = padding * 2 + lineHeight * 3;
+    int height = padding * 2 + lineHeight * 4;
 
     // Background panel for readability
     c.fillRect(x, y, width, height, new Color(10, 10, 10, 190).getRGB(), 1);
@@ -331,6 +499,24 @@ public class SandstoneMinerScript extends Script {
     long minutes = (totalSeconds % 3600) / 60;
     long seconds = totalSeconds % 60;
     return String.format("%02d:%02d:%02d", hours, minutes, seconds);
+  }
+
+  private static class WaterskinTemplate {
+    private final SearchableImage icon;
+    private final Rectangle digitArea;
+
+    private WaterskinTemplate(SearchableImage icon, Rectangle digitArea) {
+      this.icon = icon;
+      this.digitArea = digitArea;
+    }
+
+    private SearchableImage icon() {
+      return icon;
+    }
+
+    private Rectangle digitArea() {
+      return digitArea;
+    }
   }
 
 }
