@@ -3,6 +3,7 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/eqp48-osmb.iml" filepath="$PROJECT_DIR$/eqp48-osmb.iml" />
+      <module fileurl="file://$PROJECT_DIR$/gem-miner/gem-miner.iml" filepath="$PROJECT_DIR$/gem-miner/gem-miner.iml" />
       <module fileurl="file://$PROJECT_DIR$/sandstone-miner/sandstone-miner.iml" filepath="$PROJECT_DIR$/sandstone-miner/sandstone-miner.iml" />
       <module fileurl="file://$PROJECT_DIR$/volcanic-ash-miner/volcanic-ash-miner.iml" filepath="$PROJECT_DIR$/volcanic-ash-miner/volcanic-ash-miner.iml" />
     </modules>
