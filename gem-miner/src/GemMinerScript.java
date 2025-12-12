@@ -85,7 +85,7 @@ public class GemMinerScript extends Script {
   // Focus lookups around the Shilo gem mine.
   @Override
   public int[] regionsToPrioritise() {
-    return getActiveLocation().priorityRegions();
+    return new int[]{11310, 11410};
   }
 
   @Override
