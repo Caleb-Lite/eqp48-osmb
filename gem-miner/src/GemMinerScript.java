@@ -435,7 +435,7 @@ public class GemMinerScript extends Script {
       lastXp[0] = currentXp;
 
       return targetRespawned || inventoryFull;
-    }, 4_000);
+    }, random(6_000, 8_000));
 
     if (respawnSeen[0] && targetPos != null) {
       waitingRespawn.add(targetPos);
@@ -475,7 +475,24 @@ public class GemMinerScript extends Script {
     if (hull == null || hull.numVertices() == 0) {
       return false;
     }
-    return getFinger().tapGameScreen(hull);
+    int[] xs = hull.getXPoints();
+    int[] ys = hull.getYPoints();
+    if (xs == null || ys == null || xs.length == 0 || ys.length == 0) {
+      return false;
+    }
+    int topIndex = 0;
+    int topY = Integer.MAX_VALUE;
+    for (int i = 0; i < xs.length && i < ys.length; i++) {
+      int y = ys[i];
+      if (y < topY) {
+        topY = y;
+        topIndex = i;
+      }
+    }
+    int targetX = xs[topIndex];
+    int targetY = ys[topIndex];
+    com.osmb.api.shape.Rectangle tapRect = new com.osmb.api.shape.Rectangle(targetX - 1, targetY - 1, 3, 3);
+    return submitHumanTask(() -> getFinger().tapGameScreen(tapRect), 2_000);
   }
 
   private boolean hasMineableGemOnScreen() {
