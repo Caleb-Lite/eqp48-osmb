@@ -12,6 +12,7 @@ import com.osmb.api.utils.timing.Timer;
 import com.osmb.api.visual.drawing.Canvas;
 import com.osmb.api.shape.Polygon;
 import com.osmb.api.shape.Rectangle;
+import com.osmb.api.input.MenuEntry;
 
 import java.awt.Color;
 import java.awt.Font;
@@ -475,24 +476,19 @@ public class GemMinerScript extends Script {
     if (hull == null || hull.numVertices() == 0) {
       return false;
     }
-    int[] xs = hull.getXPoints();
-    int[] ys = hull.getYPoints();
-    if (xs == null || ys == null || xs.length == 0 || ys.length == 0) {
-      return false;
-    }
-    int topIndex = 0;
-    int topY = Integer.MAX_VALUE;
-    for (int i = 0; i < xs.length && i < ys.length; i++) {
-      int y = ys[i];
-      if (y < topY) {
-        topY = y;
-        topIndex = i;
+    Polygon shrunk = hull.getResized(0.7);
+    Polygon targetHull = shrunk != null ? shrunk : hull;
+    return submitHumanTask(() -> {
+      MenuEntry response = getFinger().tapGetResponse(false, targetHull);
+      if (response == null) {
+        return false;
       }
-    }
-    int targetX = xs[topIndex];
-    int targetY = ys[topIndex];
-    com.osmb.api.shape.Rectangle tapRect = new com.osmb.api.shape.Rectangle(targetX - 1, targetY - 1, 3, 3);
-    return submitHumanTask(() -> getFinger().tapGameScreen(tapRect), 2_000);
+      String action = response.getAction();
+      String name = response.getEntityName();
+      return action != null && name != null &&
+        "mine".equalsIgnoreCase(action) &&
+        TARGET_OBJECT_NAME.equalsIgnoreCase(name);
+    }, 2_000);
   }
 
   private boolean hasMineableGemOnScreen() {
