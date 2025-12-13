@@ -9,16 +9,20 @@ import com.osmb.api.ui.component.tabs.skill.SkillType;
 import com.osmb.api.ui.component.tabs.skill.SkillsTabComponent;
 import com.osmb.api.utils.timing.Timer;
 import com.osmb.api.utils.UIResult;
+import com.osmb.api.utils.UIResultList;
 import com.osmb.api.item.ItemID;
 import com.osmb.api.ui.spellbook.LunarSpellbook;
 import com.osmb.api.ui.spellbook.SpellNotFoundException;
 import com.osmb.api.ui.tabs.Spellbook;
 import com.osmb.api.ui.overlay.BuffOverlay;
 import com.osmb.api.walker.WalkConfig;
+import com.osmb.api.world.SkillTotal;
+import com.osmb.api.world.World;
 import com.osmb.api.visual.color.ColorModel;
 import com.osmb.api.visual.color.tolerance.impl.SingleThresholdComparator;
 import com.osmb.api.shape.Rectangle;
 import com.osmb.api.shape.Polygon;
+import com.osmb.api.input.MenuEntry;
 import com.osmb.api.visual.drawing.Canvas;
 import com.osmb.api.visual.image.Image;
 import com.osmb.api.visual.image.ImageSearchResult;
@@ -45,13 +49,22 @@ import java.awt.Font;
   name = "Sandstone Miner",
   description = "Mines sandstone rocks in the quarry.",
   skillCategory = SkillCategory.MINING,
-  version = 1.3
+  version = 1.4
 )
 public class SandstoneMinerScript extends Script {
-  private static final String VERSION = "1.3";
+  private static final String VERSION = "1.4";
   private static final String TARGET_ROCK_NAME = "Sandstone rocks";
   private static final WorldPosition GRINDER_POS = new WorldPosition(3152, 2909, 0);
-  private static final WorldPosition SANDSTONE_POS = new WorldPosition(3167, 2908, 0);
+  private static final WorldPosition NORTH_ANCHOR = new WorldPosition(3163, 2914, 0);
+  private static final WorldPosition SOUTH_ANCHOR = new WorldPosition(3165, 2906, 0);
+  private static final Set<WorldPosition> NORTH_ROCKS = Set.of(
+    new WorldPosition(3163, 2915, 0),
+    new WorldPosition(3164, 2914, 0)
+  );
+  private static final Set<WorldPosition> SOUTH_ROCKS = Set.of(
+    new WorldPosition(3166, 2906, 0),
+    new WorldPosition(3164, 2906, 0)
+  );
   private static final int[] WATERSKIN_IDS = new int[] {
     ItemID.WATERSKIN4,
     ItemID.WATERSKIN3,
@@ -70,6 +83,14 @@ public class SandstoneMinerScript extends Script {
   private double startMiningXp = 0;
   private int startMiningLevel = 0;
   private Webhook webhook;
+  private volatile Webhook.MiningLocation lastMiningLocation = Webhook.MiningLocation.NORTH;
+  private WorldPosition lastMovePosition = null;
+  private long lastMoveChangeMs = 0;
+  private WorldPosition lastAnchorWalkTarget = null;
+  private long lastAnchorWalkMs = 0;
+  private boolean hopOnNearbyPlayersEnabled = false;
+  private int hopRadiusTiles = 0;
+  private long lastHopAttemptMs = 0;
 
   public SandstoneMinerScript(Object scriptCore) {
     super(scriptCore);
@@ -110,6 +131,9 @@ public class SandstoneMinerScript extends Script {
       startTimeMs = System.currentTimeMillis();
     }
 
+    // Update movement state each tick
+    isPlayerMoving();
+
     ItemGroupResult inventory = getWidgetManager().getInventory().search(Set.of(
       ItemID.ASTRAL_RUNE,
       ItemID.WATER_RUNE,
@@ -126,6 +150,15 @@ public class SandstoneMinerScript extends Script {
       return 800;
     }
 
+    Webhook.MiningLocation miningLocation = webhook.getMiningLocation();
+    if (miningLocation != lastMiningLocation) {
+      waitingRespawn.clear();
+      lastMiningLocation = miningLocation;
+    }
+
+    hopOnNearbyPlayersEnabled = webhook.isHopEnabled();
+    hopRadiusTiles = Math.max(0, webhook.getHopRadiusTiles());
+
     Integer waterskinCharges = getWaterskinCharges();
 
     // Highest priority in-loop: cast Humidify once when available
@@ -138,13 +171,27 @@ public class SandstoneMinerScript extends Script {
       }
     }
 
+    WorldPosition myPos = getWorldPosition();
+    if (myPos == null) {
+      return 800;
+    }
+
+    WorldPosition anchor = getAnchorForLocation(miningLocation);
+
+    if (maybeHopForNearbyPlayers(anchor, myPos)) {
+      return random(800, 1200);
+    }
+
     if (inventory.isFull()) {
       return handleFullInventory();
     }
 
-    WorldPosition myPos = getWorldPosition();
-    if (myPos == null) {
-      return 800;
+    double anchorDistance = anchor != null && myPos != null ? myPos.distanceTo(anchor) : Double.MAX_VALUE;
+    if (anchor != null && !inventory.isFull() && anchorDistance > 1.0) {
+      if (requestAnchorWalk(anchor)) {
+        return random(400, 700);
+      }
+      return random(300, 500);
     }
 
     List<WorldPosition> respawnCircles = getRespawnCirclePositions();
@@ -153,14 +200,14 @@ public class SandstoneMinerScript extends Script {
       object != null &&
         object.isInteractableOnScreen() &&
         object.getWorldPosition() != null &&
-        allowRock(object.getWorldPosition(), respawnCircles) &&
+        allowRock(object.getWorldPosition(), respawnCircles, myPos, miningLocation) &&
         object.getName() != null &&
         TARGET_ROCK_NAME.equalsIgnoreCase(object.getName()) &&
         hasMineAction(object)
     );
 
     if (sandstoneRocks == null || sandstoneRocks.isEmpty()) {
-      walkToSandstoneHome();
+      requestAnchorWalk(anchor);
       return random(500, 800);
     }
 
@@ -168,7 +215,7 @@ public class SandstoneMinerScript extends Script {
     RSObject sandstoneRock = sandstoneRocks.get(0);
 
     if (sandstoneRock == null) {
-      walkToSandstoneHome();
+      requestAnchorWalk(anchor);
       return random(500, 800);
     }
 
@@ -181,7 +228,7 @@ public class SandstoneMinerScript extends Script {
     }
 
     boolean mined = waitForMiningCompletion();
-    if (mined && sandstoneRock.getWorldPosition() != null) {
+    if (mined && sandstoneRock.getWorldPosition() != null && isAllowedRockPosition(sandstoneRock.getWorldPosition(), miningLocation)) {
       waitingRespawn.add(sandstoneRock.getWorldPosition());
     }
 
@@ -213,6 +260,9 @@ public class SandstoneMinerScript extends Script {
         return random(500, 800);
       }
     } else {
+      if (isPlayerMoving()) {
+        return random(400, 700);
+      }
       WalkConfig config = new WalkConfig.Builder()
         .breakCondition(() -> {
           RSObject g = findGrinder();
@@ -245,22 +295,21 @@ public class SandstoneMinerScript extends Script {
     );
   }
 
-  private void walkToSandstoneHome() {
+  private void walkToAnchor(WorldPosition anchor) {
+    if (anchor == null) {
+      return;
+    }
     WalkConfig config = new WalkConfig.Builder()
-      .breakCondition(this::hasSandstoneOnScreen)
+      .minimapTapDelay(1200, 2000)
+      .tileRandomisationRadius(0)
+      .breakDistance(0)
+      .setWalkMethods(false, true)
+      .breakCondition(() -> {
+        WorldPosition pos = getWorldPosition();
+        return pos != null && pos.distanceTo(anchor) <= 0.0;
+      })
       .build();
-    getWalker().walkTo(SANDSTONE_POS, config);
-  }
-
-  private boolean hasSandstoneOnScreen() {
-    RSObject rock = getObjectManager().getRSObject(object ->
-      object != null &&
-        object.isInteractableOnScreen() &&
-        object.getName() != null &&
-        TARGET_ROCK_NAME.equalsIgnoreCase(object.getName()) &&
-        hasMineAction(object)
-    );
-    return rock != null;
+    getWalker().walkTo(anchor, config);
   }
 
   private boolean waitForPlayerIdle() {
@@ -312,10 +361,32 @@ public class SandstoneMinerScript extends Script {
 
   private List<WorldPosition> getRespawnCirclePositions() {
     List<Rectangle> respawnCircles = getPixelAnalyzer().findRespawnCircles();
-    return getUtils().getWorldPositionForRespawnCircles(respawnCircles, 20);
+    List<WorldPosition> positions = getUtils().getWorldPositionForRespawnCircles(respawnCircles, 20);
+    return positions != null ? positions : Collections.emptyList();
   }
 
-  private boolean allowRock(WorldPosition position, List<WorldPosition> respawnCircles) {
+  private WorldPosition getAnchorForLocation(Webhook.MiningLocation location) {
+    return location == Webhook.MiningLocation.SOUTH ? SOUTH_ANCHOR : NORTH_ANCHOR;
+  }
+
+  private Set<WorldPosition> getAllowedRockPositions(Webhook.MiningLocation location) {
+    return location == Webhook.MiningLocation.SOUTH ? SOUTH_ROCKS : NORTH_ROCKS;
+  }
+
+  private boolean isAllowedRockPosition(WorldPosition position, Webhook.MiningLocation location) {
+    if (position == null) {
+      return false;
+    }
+    return getAllowedRockPositions(location).contains(position);
+  }
+
+  private boolean allowRock(WorldPosition position, List<WorldPosition> respawnCircles, WorldPosition playerPos, Webhook.MiningLocation location) {
+    if (!isAllowedRockPosition(position, location)) {
+      return false;
+    }
+    if (isDiagonalToPlayer(position, playerPos)) {
+      return false;
+    }
     if (waitingRespawn.contains(position)) {
       if (respawnCircles.contains(position)) {
         return false;
@@ -323,6 +394,120 @@ public class SandstoneMinerScript extends Script {
       waitingRespawn.remove(position);
     }
     return true;
+  }
+
+  private boolean isDiagonalToPlayer(WorldPosition rockPos, WorldPosition playerPos) {
+    if (rockPos == null || playerPos == null) {
+      return false;
+    }
+    int dx = Math.abs(rockPos.getX() - playerPos.getX());
+    int dy = Math.abs(rockPos.getY() - playerPos.getY());
+    return dx == 1 && dy == 1;
+  }
+
+  private boolean requestAnchorWalk(WorldPosition anchor) {
+    if (anchor == null) {
+      return false;
+    }
+    if (isPlayerMoving()) {
+      return false;
+    }
+    long now = System.currentTimeMillis();
+    if (anchor.equals(lastAnchorWalkTarget) && now - lastAnchorWalkMs < 1200) {
+      return false;
+    }
+    walkToAnchor(anchor);
+    lastAnchorWalkTarget = anchor;
+    lastAnchorWalkMs = now;
+    return true;
+  }
+
+  private boolean maybeHopForNearbyPlayers(WorldPosition anchor, WorldPosition myPos) {
+    if (!hopOnNearbyPlayersEnabled || hopRadiusTiles <= 0 || anchor == null) {
+      return false;
+    }
+    long now = System.currentTimeMillis();
+    if (now - lastHopAttemptMs < 10_000) {
+      return false;
+    }
+    var minimap = getWidgetManager().getMinimap();
+    if (minimap == null) {
+      return false;
+    }
+    UIResultList<WorldPosition> players = minimap.getPlayerPositions();
+    if (players == null || !players.isFound()) {
+      return false;
+    }
+    for (WorldPosition pos : players.asList()) {
+      if (pos == null) {
+        continue;
+      }
+      if (myPos != null && pos.equals(myPos)) {
+        continue;
+      }
+      if (pos.getPlane() != anchor.getPlane()) {
+        continue;
+      }
+      int dx = Math.abs(pos.getX() - anchor.getX());
+      int dy = Math.abs(pos.getY() - anchor.getY());
+      int chebyshevDistance = Math.max(dx, dy);
+      if (chebyshevDistance <= hopRadiusTiles) {
+        lastHopAttemptMs = now;
+        if (attemptWorldHop()) {
+          waitingRespawn.clear();
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private boolean attemptWorldHop() {
+    try {
+      Integer currentWorld = getCurrentWorld();
+      getProfileManager().forceHop(worlds -> {
+        if (worlds == null || worlds.isEmpty()) {
+          return null;
+        }
+        List<World> filtered = new ArrayList<>();
+        for (World world : worlds) {
+          if (world != null &&
+            (currentWorld == null || world.getId() != currentWorld) &&
+            world.isMembers() &&
+            !world.isIgnore() &&
+            (world.getSkillTotal() == null || world.getSkillTotal() == SkillTotal.NONE)) {
+            filtered.add(world);
+          }
+        }
+        if (filtered.isEmpty()) {
+          for (World world : worlds) {
+            if (world != null &&
+              (currentWorld == null || world.getId() != currentWorld) &&
+              world.isMembers()) {
+              return world;
+            }
+          }
+          return worlds.get(0);
+        }
+        int idx = Math.max(0, Math.min(filtered.size() - 1, random(0, filtered.size())));
+        return filtered.get(idx);
+      });
+      return true;
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
+  private boolean isPlayerMoving() {
+    boolean animating = getPixelAnalyzer().isPlayerAnimating(0.4);
+    WorldPosition pos = getWorldPosition();
+    if (pos != null && !pos.equals(lastMovePosition)) {
+      lastMovePosition = pos;
+      lastMoveChangeMs = System.currentTimeMillis();
+      return true;
+    }
+    long sinceMove = System.currentTimeMillis() - lastMoveChangeMs;
+    return animating || sinceMove < 800;
   }
 
   private double getMiningXp() {
@@ -360,7 +545,19 @@ public class SandstoneMinerScript extends Script {
     if (hull == null || hull.numVertices() == 0) {
       return false;
     }
-    return getFinger().tapGameScreen(hull);
+    Polygon shrunk = hull.getResized(0.5);
+    Polygon targetHull = shrunk != null ? shrunk : hull;
+    return submitHumanTask(() -> {
+      MenuEntry response = getFinger().tapGetResponse(false, targetHull);
+      if (response == null) {
+        return false;
+      }
+      String action = response.getAction();
+      String name = response.getEntityName();
+      return action != null && name != null &&
+        "mine".equalsIgnoreCase(action) &&
+        TARGET_ROCK_NAME.equalsIgnoreCase(name);
+    }, 2_000);
   }
 
   private boolean canCastHumidify(ItemGroupResult inventory) {

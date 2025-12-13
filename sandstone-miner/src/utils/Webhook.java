@@ -2,6 +2,7 @@ package utils;
 
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
+import javax.swing.JComboBox;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -26,14 +27,31 @@ public class Webhook {
     WebhookData snapshot();
   }
 
-  public record WebhookConfig(String webhookUrl, int intervalMinutes, boolean enabled) {}
+  public enum MiningLocation {
+    NORTH("North"),
+    SOUTH("South");
+
+    private final String label;
+
+    MiningLocation(String label) {
+      this.label = label;
+    }
+
+    @Override
+    public String toString() {
+      return label;
+    }
+  }
+
+  public record WebhookConfig(String webhookUrl, int intervalMinutes, boolean enabled, MiningLocation miningLocation,
+                              boolean hopEnabled, int hopRadiusTiles) {}
   public record WebhookData(int sandstone, long xpGained, int levelsGained, String runtimeText, int intervalMinutes) {}
 
   private final DataProvider dataProvider;
   private final Consumer<String> logger;
   private final ConcurrentLinkedQueue<String> pendingEvents = new ConcurrentLinkedQueue<>();
 
-  private volatile WebhookConfig config = new WebhookConfig(null, 30, false);
+  private volatile WebhookConfig config = new WebhookConfig(null, 30, false, MiningLocation.NORTH, false, 0);
   private volatile boolean submitted = false;
   private volatile boolean dialogShown = false;
   private volatile boolean startSent = false;
@@ -54,6 +72,18 @@ public class Webhook {
     return config != null ? config.intervalMinutes() : 0;
   }
 
+  public MiningLocation getMiningLocation() {
+    return config != null && config.miningLocation() != null ? config.miningLocation() : MiningLocation.NORTH;
+  }
+
+  public boolean isHopEnabled() {
+    return config != null && config.hopEnabled();
+  }
+
+  public int getHopRadiusTiles() {
+    return config != null ? config.hopRadiusTiles() : 0;
+  }
+
   public void showDialog() {
     dialogShown = true;
     SwingUtilities.invokeLater(() -> {
@@ -61,29 +91,41 @@ public class Webhook {
         return;
       }
       Frame frame = null;
-      dialog = new JDialog(frame, "Webhook", false);
+      dialog = new JDialog(frame, "Settings", false);
       dialog.setLayout(new GridBagLayout());
       GridBagConstraints gbc = new GridBagConstraints();
       gbc.insets = new Insets(4, 4, 4, 4);
       gbc.fill = GridBagConstraints.HORIZONTAL;
       gbc.weightx = 1.0;
 
+      JComboBox<MiningLocation> locationDropdown = new JComboBox<>(MiningLocation.values());
+      locationDropdown.setSelectedItem(config.miningLocation() != null ? config.miningLocation() : MiningLocation.NORTH);
+      JCheckBox hopCheck = new JCheckBox("Hop when player within tiles (0 = same tile):", config.hopEnabled());
+      JTextField hopTilesField = new JTextField(Integer.toString(Math.max(0, config.hopRadiusTiles())), 5);
       JTextField urlField = new JTextField(config.webhookUrl() != null ? config.webhookUrl() : "", 24);
       JTextField intervalField = new JTextField(Integer.toString(config.intervalMinutes()), 6);
       JCheckBox enableBox = new JCheckBox("Enable webhook", config.enabled());
 
-      gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
+      gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 1;
+      dialog.add(new JLabel("Mining location:"), gbc);
+      gbc.gridx = 1; gbc.gridy = 0; dialog.add(locationDropdown, gbc);
+
+      gbc.gridx = 0; gbc.gridy = 1; dialog.add(hopCheck, gbc);
+      gbc.gridx = 1; gbc.gridy = 1; dialog.add(hopTilesField, gbc);
+
+      gbc.gridx = 0; gbc.gridy = 2; gbc.gridwidth = 2;
       dialog.add(enableBox, gbc);
       gbc.gridwidth = 1;
 
-      gbc.gridx = 0; gbc.gridy = 1; dialog.add(new JLabel("Webhook URL:"), gbc);
-      gbc.gridx = 1; gbc.gridy = 1; dialog.add(urlField, gbc);
+      gbc.gridx = 0; gbc.gridy = 3; dialog.add(new JLabel("Webhook URL:"), gbc);
+      gbc.gridx = 1; gbc.gridy = 3; dialog.add(urlField, gbc);
 
-      gbc.gridx = 0; gbc.gridy = 2; dialog.add(new JLabel("Interval (minutes):"), gbc);
-      gbc.gridx = 1; gbc.gridy = 2; dialog.add(intervalField, gbc);
+      gbc.gridx = 0; gbc.gridy = 4; dialog.add(new JLabel("Interval (minutes):"), gbc);
+      gbc.gridx = 1; gbc.gridy = 4; dialog.add(intervalField, gbc);
 
       urlField.setEnabled(enableBox.isSelected());
       intervalField.setEnabled(enableBox.isSelected());
+      hopTilesField.setEnabled(hopCheck.isSelected());
 
       enableBox.addActionListener(e -> {
         boolean enabled = enableBox.isSelected();
@@ -91,10 +133,12 @@ public class Webhook {
         intervalField.setEnabled(enabled);
       });
 
+      hopCheck.addActionListener(e -> hopTilesField.setEnabled(hopCheck.isSelected()));
+
       JPanel buttons = new JPanel();
       JButton saveBtn = new JButton("Save");
       buttons.add(saveBtn);
-      gbc.gridx = 0; gbc.gridy = 3; gbc.gridwidth = 2;
+      gbc.gridx = 0; gbc.gridy = 5; gbc.gridwidth = 2;
       dialog.add(buttons, gbc);
 
       saveBtn.addActionListener(event -> {
@@ -109,7 +153,18 @@ public class Webhook {
           minutes = 1;
         }
         boolean enabled = enableBox.isSelected();
-        config = new WebhookConfig(url, minutes, enabled);
+        MiningLocation location = (MiningLocation) locationDropdown.getSelectedItem();
+        int hopTiles = 0;
+        try {
+          hopTiles = Integer.parseInt(hopTilesField.getText().trim());
+        } catch (NumberFormatException ignored) {
+          hopTiles = 0;
+        }
+        if (hopTiles < 0) {
+          hopTiles = 0;
+        }
+        boolean hopEnabled = hopCheck.isSelected();
+        config = new WebhookConfig(url, minutes, enabled, location != null ? location : MiningLocation.NORTH, hopEnabled, hopTiles);
         lastSentMs = System.currentTimeMillis();
         submitted = true;
         if (dialog != null) {
