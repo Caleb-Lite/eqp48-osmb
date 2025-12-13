@@ -11,6 +11,7 @@ import com.osmb.api.utils.timing.Timer;
 import com.osmb.api.visual.drawing.Canvas;
 import com.osmb.api.shape.Polygon;
 import com.osmb.api.shape.Rectangle;
+import com.osmb.api.input.MenuEntry;
 
 import java.awt.Color;
 import java.awt.Font;
@@ -27,10 +28,10 @@ import utils.Webhook.WebhookData;
   name = "Volcanic Ash Miner",
   description = "Mines volcanic ash at Fossil Island.",
   skillCategory = SkillCategory.MINING,
-  version = 1.0
+  version = 1.1
 )
 public class VolcanicAshMiningScript extends Script {
-  private static final String VERSION = "1.0";
+  private static final String VERSION = "1.1";
   private static final String TARGET_OBJECT_NAME = "Ash pile";
   private static final String BANK_OBJECT_NAME = "Bank chest";
   private static final WorldPosition BANK_POSITION = new WorldPosition(3819, 3809, 0);
@@ -382,7 +383,19 @@ public class VolcanicAshMiningScript extends Script {
     if (hull == null || hull.numVertices() == 0) {
       return false;
     }
-    return getFinger().tapGameScreen(hull);
+    Polygon shrunk = hull.getResized(0.7);
+    Polygon targetHull = shrunk != null ? shrunk : hull;
+    return submitHumanTask(() -> {
+      MenuEntry response = getFinger().tapGetResponse(false, targetHull);
+      if (response == null) {
+        return false;
+      }
+      String action = response.getAction();
+      String name = response.getEntityName();
+      return action != null && name != null &&
+        "mine".equalsIgnoreCase(action) &&
+        TARGET_OBJECT_NAME.equalsIgnoreCase(name);
+    }, 2_000);
   }
 
   private boolean hasMineableAshOnScreen() {

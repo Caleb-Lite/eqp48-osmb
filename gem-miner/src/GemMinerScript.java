@@ -30,10 +30,10 @@ import utils.Webhook.WebhookData;
   name = "Gem Miner",
   description = "Mines gem rocks in Shilo Village and banks the gems.",
   skillCategory = SkillCategory.MINING,
-  version = 1.0
+  version = 1.1
 )
 public class GemMinerScript extends Script {
-  private static final String VERSION = "1.0";
+  private static final String VERSION = "1.1";
   private static final String TARGET_OBJECT_NAME = "Gem rocks";
   private static final WorldPosition UPPER_BANK_POSITION = new WorldPosition(2852, 2953, 0);
   private static final WorldPosition UPPER_MINE = new WorldPosition(2823, 2999, 0);
