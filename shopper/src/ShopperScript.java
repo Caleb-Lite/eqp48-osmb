@@ -28,7 +28,7 @@ import java.util.Set;
         author = "eqp48",
         name = "Shopper",
         description = "All-in-one shopper",
-        version = 1.3,
+        version = 1.2,
         skillCategory = SkillCategory.OTHER
 )
 public class ShopperScript extends Script {
@@ -67,7 +67,7 @@ public class ShopperScript extends Script {
     private volatile int submittedRegionId = 0;
     private volatile boolean submittedHoppingEnabled = true;
     // private volatile String submittedShopTitle;
-    private static final String VERSION = "1.3";
+    private static final String VERSION = "1.2";
     private static final Font TEXT_BOLD = new Font("Arial", Font.BOLD, 12);
     private static final Font TEXT_REGULAR = new Font("Arial", Font.PLAIN, 12);
 
