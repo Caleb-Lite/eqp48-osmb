@@ -28,7 +28,7 @@ import java.util.Set;
         author = "eqp48",
         name = "Shopper",
         description = "All-in-one shopper",
-        version = 1.1,
+        version = 1.3,
         skillCategory = SkillCategory.OTHER
 )
 public class ShopperScript extends Script {
@@ -39,6 +39,12 @@ public class ShopperScript extends Script {
     private int targetItemId;
     private int targetAmount;
     private Mode mode = Mode.BUY;
+    private HopWhen hopWhen = HopWhen.OUT_OF_STOCK;
+    private ComparatorType hopStockComparator = ComparatorType.LESS_OR_EQUAL;
+    private int hopStockThreshold = 0;
+    private int prioritisedRegionId = 0;
+    private boolean hoppingEnabled = true;
+    private boolean hopRequested = false;
     // private String shopTitle;
 
     private int bought;
@@ -55,8 +61,13 @@ public class ShopperScript extends Script {
     private volatile String submittedItemInput;
     private volatile int submittedTargetAmount;
     private volatile Mode submittedMode = Mode.BUY;
+    private volatile HopWhen submittedHopWhen = HopWhen.OUT_OF_STOCK;
+    private volatile ComparatorType submittedStockComparator = ComparatorType.LESS_OR_EQUAL;
+    private volatile int submittedStockThreshold = 0;
+    private volatile int submittedRegionId = 0;
+    private volatile boolean submittedHoppingEnabled = true;
     // private volatile String submittedShopTitle;
-    private static final String VERSION = "1.1";
+    private static final String VERSION = "1.3";
     private static final Font TEXT_BOLD = new Font("Arial", Font.BOLD, 12);
     private static final Font TEXT_REGULAR = new Font("Arial", Font.PLAIN, 12);
 
@@ -113,7 +124,7 @@ public class ShopperScript extends Script {
             }
 
             if (inventorySnapshot.isFull()) {
-                log(getClass().getSimpleName(), "Inventory full; stopping script as banking is disabled.");
+                log(getClass().getSimpleName(), "Inventory full; stopping script.");
                 state = State.STOPPED;
                 return 0;
             }
@@ -126,6 +137,7 @@ public class ShopperScript extends Script {
         }
 
         if (shopInterface.isVisible()) {
+            hopRequested = false;
             if (mode == Mode.BUY) {
                 handleShop(inventorySnapshot);
             } else {
@@ -154,17 +166,28 @@ public class ShopperScript extends Script {
             return;
         }
 
-        if (itemInShop.getStackAmount() <= 0) {
+        int remainingTarget = targetAmount > 0 ? Math.max(0, targetAmount - bought) : Integer.MAX_VALUE;
+        int shopStock = itemInShop.getStackAmount();
+
+        if (shopStock <= 0) {
+            if (maybeHopForStock(remainingTarget, shopStock, "Item out of stock")) {
+                return;
+            }
             log(getClass().getSimpleName(), "Item out of stock; closing shop.");
             shopInterface.close();
             state = State.STOPPED;
             return;
         }
 
+        if (maybeHopForStock(remainingTarget, shopStock, "Stock condition met")) {
+            return;
+        }
+
         int before = getWidgetManager().getInventory().search(Set.of(targetItemId)).getAmount(targetItemId);
         int freeSlots = inventorySnapshot.getFreeSlots();
 
-        int actionQuantity = resolveBuyQuantity(itemInShop.getStackAmount());
+        int actionQuantity = resolveBuyQuantity(shopStock);
+        actionQuantity = adjustQuantityForHopCondition(actionQuantity, shopStock);
 
         if (!selectBuyQuantity(actionQuantity)) {
             log(getClass().getSimpleName(), "Failed to set buy quantity to " + actionQuantity);
@@ -194,15 +217,27 @@ public class ShopperScript extends Script {
             bought += boughtNow;
             log(getClass().getSimpleName(), "Bought " + boughtNow + " (" + bought + "/" + targetAmount + ")");
 
-            if (after != null && after.isFull()) {
-                log(getClass().getSimpleName(), "Inventory full after purchase; stopping.");
-                state = State.STOPPED;
-            }
+            int remainingAfterPurchase = targetAmount > 0 ? Math.max(0, targetAmount - bought) : Integer.MAX_VALUE;
 
             if (targetAmount > 0 && bought >= targetAmount) {
                 log(getClass().getSimpleName(), "Reached goal; closing shop.");
                 shopInterface.close();
                 state = State.STOPPED;
+                return;
+            }
+
+            if (after != null && after.isFull()) {
+                log(getClass().getSimpleName(), "Inventory full after purchase; stopping.");
+                state = State.STOPPED;
+                return;
+            }
+
+            if (remainingAfterPurchase > 0) {
+                ItemGroupResult updatedShop = shopInterface.search(Set.of(targetItemId));
+                int updatedStock = updatedShop == null ? 0 : updatedShop.getAmount(targetItemId);
+                if (maybeHopForStock(remainingAfterPurchase, updatedStock, "Shop stock condition met (" + updatedStock + ")")) {
+                    return;
+                }
             }
         }
     }
@@ -375,6 +410,110 @@ public class ShopperScript extends Script {
         return 1;
     }
 
+    private int adjustQuantityForHopCondition(int actionQuantity, int shopStock) {
+        if (hopWhen != HopWhen.STOCK_IS || hopStockComparator == null || shopStock <= 0) {
+            return actionQuantity;
+        }
+        int threshold = Math.max(0, hopStockThreshold);
+        int quantityNeeded;
+        switch (hopStockComparator) {
+            case LESS_OR_EQUAL -> quantityNeeded = shopStock - threshold;
+            case LESS -> quantityNeeded = shopStock - threshold + 1;
+            default -> {
+                return actionQuantity;
+            }
+        }
+        quantityNeeded = Math.max(1, quantityNeeded);
+        int adjusted = chooseChunk(quantityNeeded);
+        if (adjusted <= 0) {
+            adjusted = 1;
+        }
+        return Math.min(actionQuantity, adjusted);
+    }
+
+    private boolean maybeHopForStock(int remainingTarget, int shopStock, String reason) {
+        if (!shouldHopBasedOnConfig(shopStock, remainingTarget)) {
+            return false;
+        }
+        String details = hopWhen.describe(hopStockComparator, hopStockThreshold);
+        hopForMoreStock(reason + " - condition " + details + " (stock=" + shopStock + ")", remainingTarget);
+        return true;
+    }
+
+    private boolean shouldHopBasedOnConfig(int shopStock, int remainingTarget) {
+        if (hopWhen == null || remainingTarget <= 0) {
+            return false;
+        }
+        if (!hoppingEnabled) {
+            return false;
+        }
+        if (targetAmount <= 0) {
+            return false;
+        }
+        return hopWhen.shouldHop(shopStock, hopStockComparator, hopStockThreshold);
+    }
+
+    private void hopForMoreStock(String reason, int remainingTarget) {
+        if (hopRequested) {
+            return;
+        }
+        hopRequested = true;
+        log(getClass().getSimpleName(), reason + " - hopping for remaining " + remainingTarget + ".");
+
+        if (shopInterface != null && shopInterface.isVisible()) {
+            shopInterface.close();
+        }
+
+        state = State.OPENING_SHOP;
+        triggerWorldHop();
+    }
+
+    private void triggerWorldHop() {
+        try {
+            Integer currentWorld = getCurrentWorld();
+            if (getProfileManager() == null) {
+                log(getClass().getSimpleName(), "Profile manager unavailable; cannot hop.");
+                hopRequested = false;
+                return;
+            }
+            getProfileManager().forceHop(worlds -> {
+                if (worlds == null || worlds.isEmpty()) {
+                    log(getClass().getSimpleName(), "No worlds available to hop to.");
+                    hopRequested = false;
+                    return null;
+                }
+                java.util.List<com.osmb.api.world.World> filtered = new java.util.ArrayList<>();
+                for (com.osmb.api.world.World world : worlds) {
+                    if (world == null) {
+                        continue;
+                    }
+                    if (currentWorld != null && world.getId() == currentWorld) {
+                        continue;
+                    }
+                    boolean isMember = world.isMembers();
+                    boolean isNormal = world.getCategory() == com.osmb.api.world.WorldType.NORMAL;
+                    boolean isSkillTotal = world.getSkillTotal() != null && world.getSkillTotal() != com.osmb.api.world.SkillTotal.NONE;
+                    boolean isIgnored = world.isIgnore();
+                    if (isMember && isNormal && !isSkillTotal && !isIgnored) {
+                        filtered.add(world);
+                    }
+                }
+                if (!filtered.isEmpty()) {
+                    return filtered.get(random(0, filtered.size()));
+                }
+                for (com.osmb.api.world.World world : worlds) {
+                    if (world != null && world.isMembers() && (currentWorld == null || world.getId() != currentWorld)) {
+                        return world;
+                    }
+                }
+                return worlds.get(0);
+            });
+        } catch (Exception e) {
+            log(getClass().getSimpleName(), "Failed to hop worlds: " + e.getMessage());
+            hopRequested = false;
+        }
+    }
+
     private int resolveItemId(String input) {
         if (input == null || input.trim().isBlank()) {
             log(getClass().getSimpleName(), "Missing item input; stopping.");
@@ -533,6 +672,13 @@ public class ShopperScript extends Script {
         submittedItemInput = options.getItemInput();
         submittedTargetAmount = options.getTargetAmount();
         submittedMode = Mode.fromString(options.getMode());
+        submittedHopWhen = HopWhen.fromSelection(options.getHopWhenSelection());
+        submittedStockComparator = ComparatorType.fromString(options.getStockComparatorSelection());
+        Integer parsedThreshold = options.getStockThreshold();
+        submittedStockThreshold = parsedThreshold == null ? 0 : Math.max(0, parsedThreshold);
+        Integer region = options.getRegionId();
+        submittedRegionId = region == null ? 0 : Math.max(0, region);
+        submittedHoppingEnabled = options.isHoppingEnabled();
         settingsConfirmed = true;
         options.closeWindow();
     }
@@ -542,6 +688,12 @@ public class ShopperScript extends Script {
         targetItemId = resolveItemId(submittedItemInput);
         targetAmount = submittedTargetAmount;
         mode = submittedMode == null ? Mode.BUY : submittedMode;
+        hopWhen = submittedHopWhen == null ? HopWhen.OUT_OF_STOCK : submittedHopWhen;
+        hopStockComparator = submittedStockComparator == null ? ComparatorType.LESS_OR_EQUAL : submittedStockComparator;
+        hopStockThreshold = Math.max(0, submittedStockThreshold);
+        prioritisedRegionId = Math.max(0, submittedRegionId);
+        hoppingEnabled = submittedHoppingEnabled;
+        hopRequested = false;
 
         shopInterface = new ShopInterface(this, "");
         getWidgetManager().getInventory().registerInventoryComponent(shopInterface);
@@ -556,7 +708,18 @@ public class ShopperScript extends Script {
 
         startTime = System.currentTimeMillis();
         initialised = true;
-        log(getClass().getSimpleName(), "Configured mode=" + mode + ", action=" + npcAction + ", itemId=" + targetItemId + ", targetAmount=" + targetAmount);
+        log(
+            getClass().getSimpleName(),
+            "Configured mode=" + mode
+                + ", action=" + npcAction
+                + ", itemId=" + targetItemId
+                + ", targetAmount=" + targetAmount
+                + ", hopWhen=" + hopWhen
+                + ", comparator=" + hopStockComparator
+                + ", threshold=" + hopStockThreshold
+                + ", hoppingEnabled=" + hoppingEnabled
+                + ", region=" + prioritisedRegionId
+        );
     }
 
     private String formatTime(long ms) {
@@ -568,6 +731,15 @@ public class ShopperScript extends Script {
         long minutes = (totalSeconds % 3600) / 60;
         long seconds = totalSeconds % 60;
         return String.format("%02d:%02d:%02d", hours, minutes, seconds);
+    }
+
+    @Override
+    public int[] regionsToPrioritise() {
+        int region = prioritisedRegionId > 0 ? prioritisedRegionId : submittedRegionId;
+        if (region <= 0) {
+            return new int[0];
+        }
+        return new int[]{region};
     }
 
     private enum Mode {
@@ -585,6 +757,87 @@ public class ShopperScript extends Script {
         }
     }
 
+    private enum HopWhen {
+        OUT_OF_STOCK,
+        STOCK_IS;
+
+        static HopWhen fromSelection(String value) {
+            if (value == null) {
+                return OUT_OF_STOCK;
+            }
+            if ("stock is".equalsIgnoreCase(value.trim())) {
+                return STOCK_IS;
+            }
+            return OUT_OF_STOCK;
+        }
+
+        boolean shouldHop(int stock, ComparatorType comparator, int threshold) {
+            return switch (this) {
+                case OUT_OF_STOCK -> stock <= 0;
+                case STOCK_IS -> comparator != null && comparator.matches(stock, threshold);
+            };
+        }
+
+        String describe(ComparatorType comparator, int threshold) {
+            if (this == STOCK_IS && comparator != null) {
+                return "stock " + comparator.getSymbol() + " " + threshold;
+            }
+            return "out of stock";
+        }
+    }
+
+    private enum ComparatorType {
+        GREATER(">") {
+            @Override
+            boolean matches(int stock, int threshold) {
+                return stock > threshold;
+            }
+        },
+        LESS("<") {
+            @Override
+            boolean matches(int stock, int threshold) {
+                return stock < threshold;
+            }
+        },
+        GREATER_OR_EQUAL(">=") {
+            @Override
+            boolean matches(int stock, int threshold) {
+                return stock >= threshold;
+            }
+        },
+        LESS_OR_EQUAL("<=") {
+            @Override
+            boolean matches(int stock, int threshold) {
+                return stock <= threshold;
+            }
+        };
+
+        private final String symbol;
+
+        ComparatorType(String symbol) {
+            this.symbol = symbol;
+        }
+
+        abstract boolean matches(int stock, int threshold);
+
+        static ComparatorType fromString(String value) {
+            if (value == null) {
+                return LESS_OR_EQUAL;
+            }
+            String trimmed = value.trim();
+            for (ComparatorType type : values()) {
+                if (type.symbol.equalsIgnoreCase(trimmed)) {
+                    return type;
+                }
+            }
+            return LESS_OR_EQUAL;
+        }
+
+        String getSymbol() {
+            return symbol;
+        }
+    }
+
     private Rectangle findCyanNpcBounds() {
         UIResultList<WorldPosition> npcPositions = getWidgetManager().getMinimap().getNPCPositions();
         if (npcPositions == null || npcPositions.isNotVisible()) {
@@ -592,6 +845,9 @@ public class ShopperScript extends Script {
         }
 
         SearchablePixel cyanPixel = new SearchablePixel(-14155777, new SingleThresholdComparator(10), ColorModel.RGB);
+        WorldPosition playerPos = getWorldPosition();
+        Rectangle closestBounds = null;
+        double closestDistance = Double.MAX_VALUE;
 
         for (WorldPosition npcPosition : npcPositions) {
             if (npcPosition == null) {
@@ -610,11 +866,18 @@ public class ShopperScript extends Script {
 
             Rectangle highlightBounds = getPixelAnalyzer().getHighlightBounds(resized, cyanPixel);
             if (highlightBounds != null) {
-                return highlightBounds;
+                if (playerPos == null) {
+                    return highlightBounds;
+                }
+                double distance = playerPos.distanceTo(npcPosition);
+                if (distance < closestDistance) {
+                    closestDistance = distance;
+                    closestBounds = highlightBounds;
+                }
             }
         }
 
-        return null;
+        return closestBounds;
     }
 
 }
