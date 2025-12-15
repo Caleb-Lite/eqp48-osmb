@@ -1,7 +1,7 @@
 # Sandstone Miner
 
-- Mines Sandstone in the Quarry and deposits them into the grinder to produce Buckets of Sand
-- Will automatically cast Humidify if you're on the Lunar spellbook and have the required runes
+- **Mines Sandstone in the Quarry and deposits them into the grinder to produce Buckets of Sand**
+- **Will automatically cast Humidify if you're on the Lunar spellbook and have the required runes**
 
 ## Getting started:
 
@@ -24,3 +24,8 @@
 **Equip a Circlet of Water to mitigate desert heat for long periods of time**
 
 ![img_2.png](img/circlet.png)
+
+## Consider supporting my work <img src="../sandstone-miner/img/kofi.png" alt="Ko-fi" width="24" height="24">:
+
+**https://ko-fi.com/eqp48**
+
