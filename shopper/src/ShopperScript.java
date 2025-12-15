@@ -8,6 +8,7 @@ import com.osmb.api.script.SkillCategory;
 import com.osmb.api.shape.Polygon;
 import com.osmb.api.shape.Rectangle;
 import com.osmb.api.utils.UIResultList;
+import com.osmb.api.utils.RandomUtils;
 import com.osmb.api.visual.SearchablePixel;
 import com.osmb.api.visual.color.ColorModel;
 import com.osmb.api.visual.color.tolerance.impl.SingleThresholdComparator;
@@ -46,10 +47,12 @@ public class ShopperScript extends Script {
     private State state = State.OPENING_SHOP;
     private boolean initialised = false;
     private boolean npcInteractionStubLogged = false;
+    private final java.util.Map<String, Integer> itemNameCache = new java.util.HashMap<>();
+    private boolean itemNameCacheBuilt = false;
 
     private volatile boolean settingsConfirmed = false;
     private volatile String submittedNpcAction;
-    private volatile int submittedTargetItemId;
+    private volatile String submittedItemInput;
     private volatile int submittedTargetAmount;
     private volatile Mode submittedMode = Mode.BUY;
     // private volatile String submittedShopTitle;
@@ -281,13 +284,13 @@ public class ShopperScript extends Script {
         String action = npcAction == null || npcAction.isBlank() ? "Trade" : npcAction;
         final Rectangle tapBounds = cyanBounds.getResized(0.4) == null ? cyanBounds : cyanBounds.getResized(0.4);
 
-        boolean tapped = submitHumanTask(() -> getFinger().tap(tapBounds, action), random(1200, 2000));
+        boolean tapped = submitHumanTask(() -> getFinger().tap(tapBounds, action), gaussianDelay(900, 2400, 1500, 300));
         if (!tapped) {
             log(getClass().getSimpleName(), "Failed to tap cyan-highlighted NPC.");
             return;
         }
 
-        boolean shopOpened = pollFramesHuman(() -> shopInterface.isVisible(), random(4000, 8000));
+        boolean shopOpened = pollFramesHuman(() -> shopInterface.isVisible(), gaussianDelay(3500, 8500, 5500, 900));
         if (shopOpened) {
             log(getClass().getSimpleName(), "Opened shop via cyan-highlighted NPC using action " + action + ".");
         } else {
@@ -372,6 +375,117 @@ public class ShopperScript extends Script {
         return 1;
     }
 
+    private int resolveItemId(String input) {
+        if (input == null || input.trim().isBlank()) {
+            log(getClass().getSimpleName(), "Missing item input; stopping.");
+            state = State.STOPPED;
+            return -1;
+        }
+
+        String trimmed = input.trim();
+        Integer parsed = parseIntOrNull(trimmed);
+        if (parsed != null && parsed > 0) {
+            return parsed;
+        }
+
+        buildItemNameCache();
+        String normalized = normalizeName(trimmed);
+        Integer exact = itemNameCache.get(normalized);
+        if (exact != null) {
+            return exact;
+        }
+
+        for (java.util.Map.Entry<String, Integer> entry : itemNameCache.entrySet()) {
+            if (entry.getKey().contains(normalized)) {
+                return entry.getValue();
+            }
+        }
+
+        log(getClass().getSimpleName(), "Could not resolve item name \"" + input + "\" to an ID; stopping.");
+        state = State.STOPPED;
+        return -1;
+    }
+
+    private void buildItemNameCache() {
+        if (itemNameCacheBuilt) {
+            return;
+        }
+        // 1) Parse generated ItemID.java for comment display names + ids (first occurrence wins)
+        try {
+            java.nio.file.Path path = java.nio.file.Paths.get("shopper/src/utils/ItemID.java");
+            if (java.nio.file.Files.exists(path)) {
+                String content = java.nio.file.Files.readString(path);
+                java.util.regex.Pattern p = java.util.regex.Pattern.compile(
+                    "/\\*\\*\\s*\\*\\s*(.+?)\\s*\\*/\\s*public static final int\\s+([A-Z0-9_]+)\\s*=\\s*(\\d+)\\s*;",
+                    java.util.regex.Pattern.DOTALL);
+                java.util.regex.Matcher m = p.matcher(content);
+                while (m.find()) {
+                    String displayName = m.group(1).trim();
+                    int id = Integer.parseInt(m.group(3));
+                    String normalized = normalizeName(displayName);
+                    itemNameCache.putIfAbsent(normalized, id);
+                }
+            }
+        } catch (Exception e) {
+            log(getClass().getSimpleName(), "Failed to parse ItemID.java: " + e.getMessage());
+        }
+
+        // 2) Reflection fallback using field names and itemManager display names where available
+        try {
+            for (java.lang.reflect.Field field : utils.ItemID.class.getFields()) {
+                if (!java.lang.reflect.Modifier.isStatic(field.getModifiers())
+                    || !java.lang.reflect.Modifier.isFinal(field.getModifiers())
+                    || field.getType() != int.class) {
+                    continue;
+                }
+                int id = field.getInt(null);
+                String displayName = null;
+                try {
+                    displayName = getItemManager() != null ? getItemManager().getItemName(id) : null;
+                } catch (Exception ignored) {
+                    // continue with fallback
+                }
+                if (displayName == null || displayName.isBlank()) {
+                    displayName = field.getName().replace("_", " ");
+                }
+                String normalized = normalizeName(displayName);
+                itemNameCache.putIfAbsent(normalized, id);
+            }
+        } catch (Exception e) {
+            log(getClass().getSimpleName(), "Failed to build item name cache (reflection): " + e.getMessage());
+        }
+        itemNameCacheBuilt = true;
+    }
+
+    private String normalizeName(String name) {
+        String lowered = name.toLowerCase();
+        // replace any non-alphanumeric with underscore, then collapse multiple underscores
+        String underscored = lowered.replaceAll("[^a-z0-9]+", "_");
+        while (underscored.contains("__")) {
+            underscored = underscored.replace("__", "_");
+        }
+        if (underscored.startsWith("_")) {
+            underscored = underscored.substring(1);
+        }
+        if (underscored.endsWith("_")) {
+            underscored = underscored.substring(0, underscored.length() - 1);
+        }
+        return underscored;
+    }
+
+    private Integer parseIntOrNull(String value) {
+        try {
+            return Integer.parseInt(value);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private int gaussianDelay(int min, int max, double mean, double stdev) {
+        int val = RandomUtils.gaussianRandom(min, max, mean, stdev);
+        return Math.max(min, Math.min(max, val));
+    }
+
     @Override
     public void onPaint(Canvas c) {
         if (c == null) {
@@ -416,7 +530,7 @@ public class ShopperScript extends Script {
 
     private void handleStartClicked() {
         submittedNpcAction = "Trade";
-        submittedTargetItemId = options.getItemId();
+        submittedItemInput = options.getItemInput();
         submittedTargetAmount = options.getTargetAmount();
         submittedMode = Mode.fromString(options.getMode());
         settingsConfirmed = true;
@@ -425,7 +539,7 @@ public class ShopperScript extends Script {
 
     private void initialiseConfig() {
         npcAction = "Trade";
-        targetItemId = submittedTargetItemId;
+        targetItemId = resolveItemId(submittedItemInput);
         targetAmount = submittedTargetAmount;
         mode = submittedMode == null ? Mode.BUY : submittedMode;
 

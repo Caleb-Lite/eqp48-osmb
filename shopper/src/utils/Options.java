@@ -9,7 +9,7 @@ import javafx.scene.control.TextField;
 import javafx.scene.layout.VBox;
 
 public class Options extends VBox {
-    private final TextField itemIdField = new TextField();
+    private final TextField itemInputField = new TextField();
     private final TextField targetAmountField = new TextField("1");
     private final Button startButton = new Button("Start");
     private final ComboBox<String> modeCombo = new ComboBox<>();
@@ -19,14 +19,14 @@ public class Options extends VBox {
         setPadding(new Insets(10));
 
         Label modeLabel = new Label("Mode:");
-        Label itemLabel = new Label("Item ID to buy/sell:");
+        Label itemLabel = new Label("Item name or ID to buy/sell:");
         Label amountLabel = new Label("Total amount:");
 
-        itemIdField.setPromptText("886");
+        itemInputField.setPromptText("e.g., Air rune or 556");
 
         getChildren().addAll(
                 modeLabel, modeCombo,
-                itemLabel, itemIdField,
+                itemLabel, itemInputField,
                 amountLabel, targetAmountField,
                 startButton
         );
@@ -38,9 +38,8 @@ public class Options extends VBox {
         modeCombo.setValue("Buy");
     }
 
-    public int getItemId() {
-        Integer id = parseIntOrNull(itemIdField.getText());
-        return id == null ? -1 : Math.max(id, -1);
+    public String getItemInput() {
+        return itemInputField.getText();
     }
 
     public int getTargetAmount() {
