@@ -52,7 +52,6 @@ public class ShopperScript extends Script {
     private boolean waitingForPacksToClear = false;
     private int waitingPackId = -1;
     private boolean hopRequested = false;
-    // private String shopTitle;
 
     private int bought;
     private long startTime;
