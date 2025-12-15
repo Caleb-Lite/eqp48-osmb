@@ -9,6 +9,7 @@ import com.osmb.api.shape.Polygon;
 import com.osmb.api.shape.Rectangle;
 import com.osmb.api.utils.UIResultList;
 import com.osmb.api.utils.RandomUtils;
+import com.osmb.api.utils.UIResult;
 import com.osmb.api.visual.SearchablePixel;
 import com.osmb.api.visual.color.ColorModel;
 import com.osmb.api.visual.color.tolerance.impl.SingleThresholdComparator;
@@ -22,13 +23,16 @@ import java.awt.Color;
 import java.awt.Font;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
+import java.util.Collections;
 import java.util.Set;
+import java.util.HashSet;
+import java.util.ArrayList;
 
 @ScriptDefinition(
         author = "eqp48",
         name = "Shopper",
         description = "All-in-one shopper",
-        version = 1.2,
+        version = 1.3,
         skillCategory = SkillCategory.OTHER
 )
 public class ShopperScript extends Script {
@@ -44,6 +48,9 @@ public class ShopperScript extends Script {
     private int hopStockThreshold = 0;
     private int prioritisedRegionId = 0;
     private boolean hoppingEnabled = true;
+    private boolean openPacksEnabled = false;
+    private boolean waitingForPacksToClear = false;
+    private int waitingPackId = -1;
     private boolean hopRequested = false;
     // private String shopTitle;
 
@@ -66,10 +73,36 @@ public class ShopperScript extends Script {
     private volatile int submittedStockThreshold = 0;
     private volatile int submittedRegionId = 0;
     private volatile boolean submittedHoppingEnabled = true;
+    private volatile boolean submittedOpenPacksEnabled = false;
     // private volatile String submittedShopTitle;
-    private static final String VERSION = "1.2";
+    private static final String VERSION = "1.3";
     private static final Font TEXT_BOLD = new Font("Arial", Font.BOLD, 12);
     private static final Font TEXT_REGULAR = new Font("Arial", Font.PLAIN, 12);
+    private static final Set<Integer> PACK_ITEM_IDS = new HashSet<>();
+
+    static {
+        buildPackIds();
+    }
+
+    private static void buildPackIds() {
+        try {
+            for (java.lang.reflect.Field field : utils.ItemID.class.getFields()) {
+                if (!java.lang.reflect.Modifier.isStatic(field.getModifiers())
+                    || !java.lang.reflect.Modifier.isFinal(field.getModifiers())
+                    || field.getType() != int.class) {
+                    continue;
+                }
+                String name = field.getName().toLowerCase();
+                if (!name.contains("pack")) {
+                    continue;
+                }
+                int id = field.getInt(null);
+                PACK_ITEM_IDS.add(id);
+            }
+        } catch (Exception ignored) {
+            // fallback is name-based detection only
+        }
+    }
 
     public ShopperScript(Object scriptCore) {
         super(scriptCore);
@@ -99,6 +132,15 @@ public class ShopperScript extends Script {
             return 200;
         }
 
+        if (waitingForPacksToClear) {
+            if (hasPacksInInventory()) {
+                return gaussianDelay(150, 500, 300, 80);
+            }
+            waitingForPacksToClear = false;
+            waitingPackId = -1;
+            log(getClass().getSimpleName(), "Packs cleared; resuming.");
+        }
+
         if (targetItemId <= 0) {
             log(getClass().getSimpleName(), "Missing item id; stopping.");
             state = State.STOPPED;
@@ -124,9 +166,18 @@ public class ShopperScript extends Script {
             }
 
             if (inventorySnapshot.isFull()) {
-                log(getClass().getSimpleName(), "Inventory full; stopping script.");
-                state = State.STOPPED;
-                return 0;
+                if (openPacksInInventory(false)) {
+                    state = State.OPENING_SHOP;
+                    return 600;
+                }
+                if (!openPacksEnabled && !hoppingEnabled) {
+                    log(getClass().getSimpleName(), "Inventory full; stopping script.");
+                    state = State.STOPPED;
+                    return 0;
+                }
+                log(getClass().getSimpleName(), "Inventory full; waiting (packs/hopping enabled).");
+                state = State.OPENING_SHOP;
+                return 600;
             }
         } else {
             if (inventorySnapshot.getAmount(targetItemId) <= 0) {
@@ -227,8 +278,17 @@ public class ShopperScript extends Script {
             }
 
             if (after != null && after.isFull()) {
-                log(getClass().getSimpleName(), "Inventory full after purchase; stopping.");
-                state = State.STOPPED;
+                if (openPacksInInventory(true)) {
+                    state = State.OPENING_SHOP;
+                    return;
+                }
+                if (!openPacksEnabled && !hoppingEnabled) {
+                    log(getClass().getSimpleName(), "Inventory full after purchase; stopping.");
+                    state = State.STOPPED;
+                    return;
+                }
+                log(getClass().getSimpleName(), "Inventory full after purchase; waiting (packs/hopping enabled).");
+                state = State.OPENING_SHOP;
                 return;
             }
 
@@ -424,16 +484,161 @@ public class ShopperScript extends Script {
             }
         }
         quantityNeeded = Math.max(1, quantityNeeded);
-        int adjusted = chooseChunk(quantityNeeded);
+        int adjusted = chooseChunkAtLeast(quantityNeeded, shopStock);
+        if (adjusted <= 0) {
+            adjusted = chooseChunk(quantityNeeded);
+        }
         if (adjusted <= 0) {
             adjusted = 1;
         }
         return Math.min(actionQuantity, adjusted);
     }
 
+    private int chooseChunkAtLeast(int needed, int shopStock) {
+        int[] options = new int[]{1, 5, 10, 50};
+        int best = -1;
+        for (int opt : options) {
+            if (opt >= needed && opt <= shopStock) {
+                if (best == -1 || opt < best) {
+                    best = opt;
+                }
+            }
+        }
+        if (best != -1) {
+            return best;
+        }
+        // fallback to largest available chunk if none meet needed
+        for (int i = options.length - 1; i >= 0; i--) {
+            int opt = options[i];
+            if (opt <= shopStock) {
+                return opt;
+            }
+        }
+        return -1;
+    }
+
+    private boolean openPacksInInventory(boolean closeShopFirst) {
+        if (!openPacksEnabled) {
+            return false;
+        }
+        if (getWidgetManager() == null || getWidgetManager().getInventory() == null || getItemManager() == null) {
+            return false;
+        }
+        if (waitingForPacksToClear) {
+            return true;
+        }
+        if (closeShopFirst && shopInterface != null && shopInterface.isVisible()) {
+            shopInterface.close();
+        }
+        ItemGroupResult inventoryScan = getItemManager().scanItemGroup(getWidgetManager().getInventory(), PACK_ITEM_IDS);
+        if (inventoryScan == null) {
+            return false;
+        }
+        java.util.List<ItemSearchResult> items = new ArrayList<>();
+        if (!PACK_ITEM_IDS.isEmpty()) {
+            java.util.List<ItemSearchResult> packItems = inventoryScan.getAllOfItems(PACK_ITEM_IDS);
+            if (packItems != null) {
+                items.addAll(packItems);
+            }
+        }
+        java.util.List<ItemSearchResult> recognised = inventoryScan.getRecognisedItems();
+        if (recognised != null) {
+            items.addAll(recognised);
+        }
+        if (items.isEmpty()) {
+            return false;
+        }
+        items.sort((a, b) -> Integer.compare(slotOf(a), slotOf(b)));
+
+        for (ItemSearchResult item : items) {
+            if (item == null) {
+                continue;
+            }
+            if (!isPackItem(item)) {
+                continue;
+            }
+            UIResult<Rectangle> tappable = item.getTappableBounds();
+            if (tappable == null || tappable.isNotFound() || tappable.isNotVisible()) {
+                continue;
+            }
+            Rectangle bounds = tappable.get();
+            if (bounds == null) {
+                continue;
+            }
+            String name = safeItemName(item.getId());
+            log(getClass().getSimpleName(), "Opening pack: " + name + " (single tap)");
+            boolean tapped = submitHumanTask(() -> getFinger().tap(bounds), gaussianDelay(300, 900, 500, 150));
+            if (tapped) {
+                waitingForPacksToClear = true;
+                waitingPackId = item.getId();
+            }
+            return tapped;
+        }
+
+        return false;
+    }
+
+    private boolean hasPacksInInventory() {
+        if (getWidgetManager() == null || getWidgetManager().getInventory() == null || getItemManager() == null) {
+            return false;
+        }
+        // Prefer cheap check against the pack we tapped; fall back to broader scan
+        Set<Integer> idsToCheck = new java.util.HashSet<>();
+        if (waitingPackId > 0) {
+            idsToCheck.add(waitingPackId);
+        }
+        if (idsToCheck.isEmpty()) {
+            idsToCheck = PACK_ITEM_IDS;
+        }
+        ItemGroupResult inventoryScan = getItemManager().scanItemGroup(getWidgetManager().getInventory(), idsToCheck);
+        if (inventoryScan == null) {
+            return false;
+        }
+        java.util.List<ItemSearchResult> remaining = inventoryScan.getAllOfItems(idsToCheck);
+        return remaining != null && !remaining.isEmpty();
+    }
+
+    private int slotOf(ItemSearchResult item) {
+        if (item == null) {
+            return Integer.MAX_VALUE;
+        }
+        try {
+            return item.getItemSlot();
+        } catch (Exception ignored) {
+        }
+        try {
+            return item.getSlot();
+        } catch (Exception ignored) {
+        }
+        return Integer.MAX_VALUE;
+    }
+
+    private boolean isPackItem(ItemSearchResult item) {
+        if (item == null) {
+            return false;
+        }
+        if (PACK_ITEM_IDS.contains(item.getId())) {
+            return true;
+        }
+        String name = safeItemName(item.getId());
+        return name != null && name.toLowerCase().contains("pack");
+    }
+
+    private String safeItemName(int id) {
+        try {
+            return getItemManager() != null ? getItemManager().getItemName(id) : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private boolean maybeHopForStock(int remainingTarget, int shopStock, String reason) {
         if (!shouldHopBasedOnConfig(shopStock, remainingTarget)) {
             return false;
+        }
+        if (openPacksInInventory(true)) {
+            state = State.OPENING_SHOP;
+            return true;
         }
         String details = hopWhen.describe(hopStockComparator, hopStockThreshold);
         hopForMoreStock(reason + " - condition " + details + " (stock=" + shopStock + ")", remainingTarget);
@@ -679,6 +884,7 @@ public class ShopperScript extends Script {
         Integer region = options.getRegionId();
         submittedRegionId = region == null ? 0 : Math.max(0, region);
         submittedHoppingEnabled = options.isHoppingEnabled();
+        submittedOpenPacksEnabled = options.isOpenPacksEnabled();
         settingsConfirmed = true;
         options.closeWindow();
     }
@@ -693,6 +899,7 @@ public class ShopperScript extends Script {
         hopStockThreshold = Math.max(0, submittedStockThreshold);
         prioritisedRegionId = Math.max(0, submittedRegionId);
         hoppingEnabled = submittedHoppingEnabled;
+        openPacksEnabled = submittedOpenPacksEnabled;
         hopRequested = false;
 
         shopInterface = new ShopInterface(this, "");
@@ -718,6 +925,7 @@ public class ShopperScript extends Script {
                 + ", comparator=" + hopStockComparator
                 + ", threshold=" + hopStockThreshold
                 + ", hoppingEnabled=" + hoppingEnabled
+                + ", openPacks=" + openPacksEnabled
                 + ", region=" + prioritisedRegionId
         );
     }

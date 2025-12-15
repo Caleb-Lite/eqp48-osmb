@@ -24,6 +24,7 @@ public class Options extends VBox {
     private final TextField stockThresholdField = new TextField("0");
     private final TextField regionIdField = new TextField();
     private final CheckBox enableHoppingCheck = new CheckBox("Enable world hopping");
+    private final CheckBox openPacksCheck = new CheckBox("Open packs");
 
     public Options() {
         setSpacing(8);
@@ -44,6 +45,7 @@ public class Options extends VBox {
         generalBox.getChildren().addAll(
                 regionRow,
                 modeRow,
+                openPacksCheck,
                 itemLabel, itemInputField,
                 amountLabel, targetAmountField
         );
@@ -107,6 +109,8 @@ public class Options extends VBox {
         stockComparatorCombo.setValue("<=");
         stockThresholdField.setPrefWidth(70);
         stockThresholdField.setPromptText("amount");
+
+        openPacksCheck.setSelected(false);
     }
 
     public String getItemInput() {
@@ -134,6 +138,10 @@ public class Options extends VBox {
 
     public Integer getRegionId() {
         return parseIntOrNull(regionIdField.getText());
+    }
+
+    public boolean isOpenPacksEnabled() {
+        return openPacksCheck.isSelected();
     }
 
     public String getStockComparatorSelection() {
