@@ -6,7 +6,7 @@ import com.osmb.api.shape.Rectangle;
 import com.osmb.api.visual.SearchablePixel;
 import com.osmb.api.visual.color.ColorModel;
 import com.osmb.api.visual.color.tolerance.impl.SingleThresholdComparator;
-import data.CatState;
+import data.State;
 import utils.Task;
 
 public class FindCatTask extends Task {
@@ -29,20 +29,20 @@ public class FindCatTask extends Task {
     @Override
     public boolean execute() {
         if (!isPlayerIdle()) {
-            CatState.highlightFound = false;
-            CatState.highlightBounds = null;
-            CatState.tapBounds = null;
-            CatState.tileDistance = null;
-            CatState.isNextToUs = false;
+            State.highlightFound = false;
+            State.highlightBounds = null;
+            State.tapBounds = null;
+            State.tileDistance = null;
+            State.isNextToUs = false;
             return false;
         }
         Rectangle highlightBounds = script.getPixelAnalyzer().getHighlightBounds(null, CAT_CLUSTER);
         if (highlightBounds == null) {
-            CatState.highlightFound = false;
-            CatState.highlightBounds = null;
-            CatState.tapBounds = null;
-            CatState.tileDistance = null;
-            CatState.isNextToUs = false;
+            State.highlightFound = false;
+            State.highlightBounds = null;
+            State.tapBounds = null;
+            State.tileDistance = null;
+            State.isNextToUs = false;
             return false;
         }
 
@@ -52,11 +52,11 @@ public class FindCatTask extends Task {
         }
 
         double tileDistance = computeHighlightTileDistance(highlightBounds, 12);
-        CatState.highlightFound = true;
-        CatState.highlightBounds = highlightBounds;
-        CatState.tapBounds = tapBounds;
-        CatState.tileDistance = tileDistance < 0 ? null : tileDistance;
-        CatState.isNextToUs = tileDistance <= 1.0;
+        State.highlightFound = true;
+        State.highlightBounds = highlightBounds;
+        State.tapBounds = tapBounds;
+        State.tileDistance = tileDistance < 0 ? null : tileDistance;
+        State.isNextToUs = tileDistance <= 1.0;
         return false;
     }
 

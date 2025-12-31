@@ -5,8 +5,8 @@ import com.osmb.api.shape.Rectangle;
 import java.util.ArrayList;
 import java.util.List;
 
-public final class CatState {
-    private CatState() {
+public final class State {
+    private State() {
     }
 
     public static volatile boolean highlightFound = false;

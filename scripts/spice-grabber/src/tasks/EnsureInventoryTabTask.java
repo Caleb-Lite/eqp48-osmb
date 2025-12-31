@@ -1,6 +1,7 @@
 package tasks;
 
 import com.osmb.api.ui.tabs.Tab;
+import data.State;
 import utils.Task;
 
 public class EnsureInventoryTabTask extends Task {
@@ -28,7 +29,7 @@ public class EnsureInventoryTabTask extends Task {
         }
         boolean opened = widgets.getTabManager().openTab(Tab.Type.INVENTORY);
         if (opened) {
-            data.CatState.setupComplete = true;
+            State.setupComplete = true;
         }
         return opened;
     }

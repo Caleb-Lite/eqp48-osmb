@@ -2,7 +2,7 @@ package tasks;
 
 import com.osmb.api.input.MenuEntry;
 import com.osmb.api.input.MenuHook;
-import data.CatState;
+import data.State;
 import utils.Task;
 
 public class ChaseCatTask extends Task {
@@ -14,14 +14,14 @@ public class ChaseCatTask extends Task {
 
     @Override
     public boolean activate() {
-        if (!CatState.highlightFound || !CatState.isNextToUs || CatState.tapBounds == null) {
+        if (!State.highlightFound || !State.isNextToUs || State.tapBounds == null) {
             return false;
         }
         if (!isPlayerIdle()) {
             return false;
         }
         long nowMs = System.currentTimeMillis();
-        return nowMs - CatState.lastChaseMs >= CHASE_COOLDOWN_MS;
+        return nowMs - State.lastChaseMs >= CHASE_COOLDOWN_MS;
     }
 
     @Override
@@ -39,10 +39,10 @@ public class ChaseCatTask extends Task {
             return null;
         };
 
-        boolean chased = script.getFinger().tapGameScreen(CatState.tapBounds, chaseHook);
+        boolean chased = script.getFinger().tapGameScreen(State.tapBounds, chaseHook);
         if (chased) {
-            CatState.lastChaseMs = System.currentTimeMillis();
-            CatState.chaseExecutedThisPoll = true;
+            State.lastChaseMs = System.currentTimeMillis();
+            State.chaseExecutedThisPoll = true;
         }
         return false;
     }

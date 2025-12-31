@@ -2,7 +2,7 @@ package tasks;
 
 import com.osmb.api.item.ItemGroupResult;
 import com.osmb.api.item.ItemSearchResult;
-import data.CatState;
+import data.State;
 import utils.Task;
 
 import java.util.ArrayList;
@@ -72,7 +72,7 @@ public class DecantSpiceTask extends Task {
 
     @Override
     public boolean activate() {
-        return CatState.decanting;
+        return State.decanting;
     }
 
     @Override
@@ -119,14 +119,14 @@ public class DecantSpiceTask extends Task {
             if (snapshot.isFull()) {
                 script.stop();
             }
-            CatState.decanting = false;
+            State.decanting = false;
             return true;
         }
 
         ItemSearchResult first = pair[0];
         ItemSearchResult second = pair[1];
         if (first == null || second == null) {
-            CatState.decanting = false;
+            State.decanting = false;
             return true;
         }
 

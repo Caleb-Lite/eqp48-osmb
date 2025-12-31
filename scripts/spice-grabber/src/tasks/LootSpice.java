@@ -7,7 +7,7 @@ import com.osmb.api.scene.RSTile;
 import com.osmb.api.shape.Polygon;
 import com.osmb.api.ui.component.chatbox.ChatboxComponent;
 import com.osmb.api.utils.UIResultList;
-import data.CatState;
+import data.State;
 import utils.Task;
 
 import java.util.ArrayList;
@@ -28,7 +28,7 @@ public class LootSpice extends Task {
 
     @Override
     public boolean activate() {
-        return CatState.pendingLoot;
+        return State.pendingLoot;
     }
 
     @Override
@@ -98,7 +98,7 @@ public class LootSpice extends Task {
             };
 
             if (script.getFinger().tapGameScreen(tapPoly, hook)) {
-                CatState.pendingLoot = false;
+                State.pendingLoot = false;
                 return true;
             }
         }

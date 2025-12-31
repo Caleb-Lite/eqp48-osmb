@@ -3,7 +3,7 @@ package main;
 import com.osmb.api.script.Script;
 import com.osmb.api.script.ScriptDefinition;
 import com.osmb.api.script.SkillCategory;
-import data.CatState;
+import data.State;
 import tasks.ChaseCatTask;
 import tasks.ChaseResultTask;
 import tasks.EnsureInventoryTabTask;
@@ -56,17 +56,17 @@ public class SpiceGrabberScript extends Script {
         if (inventory != null) {
             var invResult = inventory.search(java.util.Set.of());
             if (invResult != null && invResult.isFull()) {
-                if (!CatState.decantCheckedFull) {
-                    CatState.decanting = true;
-                    CatState.decantCheckedFull = true;
+                if (!State.decantCheckedFull) {
+                    State.decanting = true;
+                    State.decantCheckedFull = true;
                 }
             } else {
-                CatState.decantCheckedFull = false;
-                CatState.decanting = false;
+                State.decantCheckedFull = false;
+                State.decanting = false;
             }
         }
 
-        if (CatState.decanting && decantTask != null) {
+        if (State.decanting && decantTask != null) {
             decantTask.execute();
             return 0;
         }

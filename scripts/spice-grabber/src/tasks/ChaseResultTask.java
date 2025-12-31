@@ -2,7 +2,7 @@ package tasks;
 
 import com.osmb.api.ui.chatbox.Chatbox;
 import com.osmb.api.ui.chatbox.ChatboxFilterTab;
-import data.CatState;
+import data.State;
 import utils.Task;
 
 import java.util.ArrayList;
@@ -15,18 +15,18 @@ public class ChaseResultTask extends Task {
 
     @Override
     public boolean activate() {
-        return CatState.chaseExecutedThisPoll && isPlayerIdle();
+        return State.chaseExecutedThisPoll && isPlayerIdle();
     }
 
     @Override
     public boolean execute() {
-        if (CatState.pendingChaseResult) {
+        if (State.pendingChaseResult) {
             resolvePendingChase();
         }
 
         seedChatLines();
-        CatState.pendingChaseResult = true;
-        CatState.chaseExecutedThisPoll = false;
+        State.pendingChaseResult = true;
+        State.chaseExecutedThisPoll = false;
         return true;
     }
 
@@ -74,9 +74,9 @@ public class ChaseResultTask extends Task {
         }
 
         if (!failed) {
-            CatState.pendingLoot = true;
+            State.pendingLoot = true;
         }
-        CatState.pendingChaseResult = false;
+        State.pendingChaseResult = false;
     }
 
     private void seedChatLines() {
@@ -106,7 +106,7 @@ public class ChaseResultTask extends Task {
             return;
         }
 
-        CatState.previousChatLines = new ArrayList<>(lines);
+        State.previousChatLines = new ArrayList<>(lines);
     }
 
     private List<String> getNewChatLines(List<String> currentLines) {
@@ -114,25 +114,25 @@ public class ChaseResultTask extends Task {
             return List.of();
         }
 
-        if (CatState.previousChatLines.isEmpty()) {
-            CatState.previousChatLines = new ArrayList<>(currentLines);
+        if (State.previousChatLines.isEmpty()) {
+            State.previousChatLines = new ArrayList<>(currentLines);
             return List.of();
         }
 
-        if (currentLines.equals(CatState.previousChatLines)) {
+        if (currentLines.equals(State.previousChatLines)) {
             return List.of();
         }
 
         int firstDifference = currentLines.size();
         for (int i = 0; i < currentLines.size(); i++) {
             int suffixLen = currentLines.size() - i;
-            if (suffixLen > CatState.previousChatLines.size()) {
+            if (suffixLen > State.previousChatLines.size()) {
                 continue;
             }
 
             boolean match = true;
             for (int j = 0; j < suffixLen; j++) {
-                if (!currentLines.get(i + j).equals(CatState.previousChatLines.get(j))) {
+                if (!currentLines.get(i + j).equals(State.previousChatLines.get(j))) {
                     match = false;
                     break;
                 }
@@ -145,7 +145,7 @@ public class ChaseResultTask extends Task {
         }
 
         List<String> newLines = currentLines.subList(0, firstDifference);
-        CatState.previousChatLines = new ArrayList<>(currentLines);
+        State.previousChatLines = new ArrayList<>(currentLines);
         return newLines;
     }
 
