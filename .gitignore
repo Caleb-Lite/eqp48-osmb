@@ -5,6 +5,7 @@ out/
 .kotlin
 build/
 **/build/
+*.xml
 
 ### Eclipse ###
 .apt_generated
