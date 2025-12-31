@@ -6,6 +6,7 @@ out/
 build/
 **/build/
 *.xml
+.idea/
 
 ### Eclipse ###
 .apt_generated
