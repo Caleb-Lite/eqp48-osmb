@@ -2,7 +2,31 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/eqp48-osmb.iml" filepath="$PROJECT_DIR$/eqp48-osmb.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/eqp48-osmb.iml" filepath="$PROJECT_DIR$/.idea/modules/eqp48-osmb.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/scripts/eqp48-osmb.scripts.iml" filepath="$PROJECT_DIR$/.idea/modules/scripts/eqp48-osmb.scripts.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/scripts/gem-miner/eqp48-osmb.scripts.gem-miner.iml" filepath="$PROJECT_DIR$/.idea/modules/scripts/gem-miner/eqp48-osmb.scripts.gem-miner.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/scripts/gem-miner/eqp48-osmb.scripts.gem-miner.main.iml" filepath="$PROJECT_DIR$/.idea/modules/scripts/gem-miner/eqp48-osmb.scripts.gem-miner.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/scripts/gem-miner/eqp48-osmb.scripts.gem-miner.test.iml" filepath="$PROJECT_DIR$/.idea/modules/scripts/gem-miner/eqp48-osmb.scripts.gem-miner.test.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/scripts/eqp48-osmb.scripts.main.iml" filepath="$PROJECT_DIR$/.idea/modules/scripts/eqp48-osmb.scripts.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/scripts/master-farmers/eqp48-osmb.scripts.master-farmers.iml" filepath="$PROJECT_DIR$/.idea/modules/scripts/master-farmers/eqp48-osmb.scripts.master-farmers.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/scripts/master-farmers/eqp48-osmb.scripts.master-farmers.main.iml" filepath="$PROJECT_DIR$/.idea/modules/scripts/master-farmers/eqp48-osmb.scripts.master-farmers.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/scripts/master-farmers/eqp48-osmb.scripts.master-farmers.test.iml" filepath="$PROJECT_DIR$/.idea/modules/scripts/master-farmers/eqp48-osmb.scripts.master-farmers.test.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/scripts/pixel-grabber/eqp48-osmb.scripts.pixel-grabber.iml" filepath="$PROJECT_DIR$/.idea/modules/scripts/pixel-grabber/eqp48-osmb.scripts.pixel-grabber.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/scripts/pixel-grabber/eqp48-osmb.scripts.pixel-grabber.main.iml" filepath="$PROJECT_DIR$/.idea/modules/scripts/pixel-grabber/eqp48-osmb.scripts.pixel-grabber.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/scripts/pixel-grabber/eqp48-osmb.scripts.pixel-grabber.test.iml" filepath="$PROJECT_DIR$/.idea/modules/scripts/pixel-grabber/eqp48-osmb.scripts.pixel-grabber.test.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/scripts/sandstone-miner/eqp48-osmb.scripts.sandstone-miner.iml" filepath="$PROJECT_DIR$/.idea/modules/scripts/sandstone-miner/eqp48-osmb.scripts.sandstone-miner.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/scripts/sandstone-miner/eqp48-osmb.scripts.sandstone-miner.main.iml" filepath="$PROJECT_DIR$/.idea/modules/scripts/sandstone-miner/eqp48-osmb.scripts.sandstone-miner.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/scripts/sandstone-miner/eqp48-osmb.scripts.sandstone-miner.test.iml" filepath="$PROJECT_DIR$/.idea/modules/scripts/sandstone-miner/eqp48-osmb.scripts.sandstone-miner.test.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/scripts/shopper/eqp48-osmb.scripts.shopper.iml" filepath="$PROJECT_DIR$/.idea/modules/scripts/shopper/eqp48-osmb.scripts.shopper.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/scripts/shopper/eqp48-osmb.scripts.shopper.main.iml" filepath="$PROJECT_DIR$/.idea/modules/scripts/shopper/eqp48-osmb.scripts.shopper.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/scripts/shopper/eqp48-osmb.scripts.shopper.test.iml" filepath="$PROJECT_DIR$/.idea/modules/scripts/shopper/eqp48-osmb.scripts.shopper.test.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/scripts/spice-grabber/eqp48-osmb.scripts.spice-grabber.iml" filepath="$PROJECT_DIR$/.idea/modules/scripts/spice-grabber/eqp48-osmb.scripts.spice-grabber.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/scripts/spice-grabber/eqp48-osmb.scripts.spice-grabber.main.iml" filepath="$PROJECT_DIR$/.idea/modules/scripts/spice-grabber/eqp48-osmb.scripts.spice-grabber.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/scripts/spice-grabber/eqp48-osmb.scripts.spice-grabber.test.iml" filepath="$PROJECT_DIR$/.idea/modules/scripts/spice-grabber/eqp48-osmb.scripts.spice-grabber.test.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/scripts/eqp48-osmb.scripts.test.iml" filepath="$PROJECT_DIR$/.idea/modules/scripts/eqp48-osmb.scripts.test.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/scripts/volcanic-ash-miner/eqp48-osmb.scripts.volcanic-ash-miner.iml" filepath="$PROJECT_DIR$/.idea/modules/scripts/volcanic-ash-miner/eqp48-osmb.scripts.volcanic-ash-miner.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/scripts/volcanic-ash-miner/eqp48-osmb.scripts.volcanic-ash-miner.main.iml" filepath="$PROJECT_DIR$/.idea/modules/scripts/volcanic-ash-miner/eqp48-osmb.scripts.volcanic-ash-miner.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/scripts/volcanic-ash-miner/eqp48-osmb.scripts.volcanic-ash-miner.test.iml" filepath="$PROJECT_DIR$/.idea/modules/scripts/volcanic-ash-miner/eqp48-osmb.scripts.volcanic-ash-miner.test.iml" />
       <module fileurl="file://$PROJECT_DIR$/gem-miner/gem-miner.iml" filepath="$PROJECT_DIR$/gem-miner/gem-miner.iml" />
       <module fileurl="file://$PROJECT_DIR$/sandstone-miner/sandstone-miner.iml" filepath="$PROJECT_DIR$/sandstone-miner/sandstone-miner.iml" />
       <module fileurl="file://$PROJECT_DIR$/volcanic-ash-miner/volcanic-ash-miner.iml" filepath="$PROJECT_DIR$/volcanic-ash-miner/volcanic-ash-miner.iml" />
