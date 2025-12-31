@@ -1,0 +1,72 @@
+subprojects {
+    apply plugin: 'java'
+    apply plugin: 'idea'
+
+    group = 'com.eqp48'
+
+    repositories {
+        mavenCentral()
+    }
+
+    dependencies {
+        compileOnly files("${rootDir}/API.jar")
+    }
+
+    java {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    def isEqp48Script = {
+        projectDir.toPath().getParent() == rootDir.toPath().resolve('scripts')
+    }
+
+    sourceSets {
+        main {
+            java {
+                if (isEqp48Script()) {
+                    srcDirs = ['src']
+                } else {
+                    srcDirs = ['src', 'src/main', 'src/main/java', 'main', 'data', 'tasks', 'utils']
+                }
+            }
+        }
+    }
+
+    tasks.named('jar') {
+        // Only configure JAR output for projects with actual source code
+        onlyIf {
+            !sourceSets.main.allSource.isEmpty()
+        }
+
+        // Ensure destination directory exists
+        doFirst {
+            if (isEqp48Script()) {
+                File prodDir = new File(projectDir, 'prod')
+                if (!prodDir.exists()) {
+                    prodDir.mkdirs()
+                }
+            } else {
+                File scriptsDir = new File(new File(System.getProperty('user.home'), '.osmb'), 'Scripts')
+                if (!scriptsDir.exists()) {
+                    scriptsDir.mkdirs()
+                }
+            }
+        }
+
+        // Output eqp48 script jars to their local prod directories
+        if (isEqp48Script()) {
+            destinationDirectory = file(new File(projectDir, 'prod'))
+        } else {
+            // Output JARs directly to ~/.osmb/Scripts
+            destinationDirectory = file(new File(new File(System.getProperty('user.home'), '.osmb'), 'Scripts'))
+        }
+
+        archiveBaseName = project.name
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    }
+}
+
+tasks.register('buildAll') {
+    dependsOn(subprojects.collect { it.tasks.named('build') })
+}

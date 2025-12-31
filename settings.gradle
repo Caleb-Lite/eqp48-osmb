@@ -1,0 +1,33 @@
+// Auto-includes non-osmb modules that contain a src directory
+// Excludes infrastructure and IDE metadata directories
+
+def excludedNames = [
+        '.git', '.idea', '.gradle', 'build', 'gradle', 'scripts'
+]
+
+def includeProjectDir = { File dir, String projectPath ->
+    include(projectPath)
+    project(projectPath).projectDir = dir
+}
+
+rootDir.listFiles()
+        ?.findAll { file ->
+            file.isDirectory() &&
+                    !excludedNames.contains(file.name) &&
+                    new File(file, 'src').isDirectory()
+        }
+        ?.each { dir ->
+            def projectName = dir.name
+            includeProjectDir(dir, ":${projectName}")
+        }
+
+def scriptsDir = new File(rootDir, 'scripts')
+if (scriptsDir.isDirectory()) {
+    scriptsDir.eachDir { scriptDir ->
+        if (scriptDir.name != 'src' && new File(scriptDir, 'src').isDirectory()) {
+            def relPath = rootDir.toPath().relativize(scriptDir.toPath()).toString()
+            def projectPath = ':' + relPath.replace(File.separatorChar, ':' as char)
+            includeProjectDir(scriptDir, projectPath)
+        }
+    }
+}
