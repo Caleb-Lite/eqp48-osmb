@@ -25,6 +25,9 @@ import java.util.List;
 public class SpiceGrabberScript extends Script {
     private List<Task> tasks;
     private DecantSpiceTask decantTask;
+    private boolean zoomConfigured = false;
+    private long lastZoomAttemptMs = 0;
+    private static final long ZOOM_RETRY_MS = 2000;
 
     public SpiceGrabberScript(Object scriptCore) {
         super(scriptCore);
@@ -51,6 +54,7 @@ public class SpiceGrabberScript extends Script {
         if (tasks == null) {
             return 0;
         }
+        ensureZoomConfigured();
 
         var inventory = getWidgetManager().getInventory();
         if (inventory != null) {
@@ -81,6 +85,33 @@ public class SpiceGrabberScript extends Script {
         }
 
         return 0;
+    }
+
+    private void ensureZoomConfigured() {
+        if (zoomConfigured) {
+            return;
+        }
+        if (getWidgetManager().getGameState() != com.osmb.api.ui.GameState.LOGGED_IN) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (now - lastZoomAttemptMs < ZOOM_RETRY_MS) {
+            return;
+        }
+        lastZoomAttemptMs = now;
+        var settings = getWidgetManager().getSettings();
+        if (settings == null) {
+            return;
+        }
+        var zoomResult = settings.getZoomLevel();
+        boolean alreadyMaxZoom = zoomResult.isFound() && zoomResult.get() == 0;
+        if (!alreadyMaxZoom) {
+            if (settings.setZoomLevel(0)) {
+                zoomConfigured = true;
+            }
+            return;
+        }
+        zoomConfigured = true;
     }
 
 }

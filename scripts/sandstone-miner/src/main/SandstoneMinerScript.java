@@ -70,6 +70,9 @@ public class SandstoneMinerScript extends Script {
   private boolean lastMineGainedXp = false;
   private ItemGroupResult inventorySnapshot = null;
   private Integer waterskinCharges = null;
+  private boolean zoomConfigured = false;
+  private long lastZoomAttemptMs = 0;
+  private static final long ZOOM_RETRY_MS = 2000;
 
   private final WaterskinTracker waterskinTracker;
   private final List<Task> tasks = new ArrayList<>();
@@ -85,15 +88,6 @@ public class SandstoneMinerScript extends Script {
 
   @Override
   public void onStart() {
-    var settings = getWidgetManager().getSettings();
-    if (settings != null) {
-      var zoomResult = settings.getZoomLevel();
-      boolean alreadyMaxZoom = zoomResult.isFound() && zoomResult.get() == 0;
-      if (!alreadyMaxZoom) {
-        settings.setZoomLevel(0);
-      }
-    }
-
     startMiningXp = getMiningXp();
     startMiningLevel = getMiningLevel();
     gui = new GUI(webhook.getConfig());
@@ -126,6 +120,7 @@ public class SandstoneMinerScript extends Script {
       startTimeMs = System.currentTimeMillis();
     }
 
+    ensureZoomConfigured();
     isPlayerMoving();
 
     inventorySnapshot = getWidgetManager().getInventory().search(Set.of(
@@ -164,6 +159,33 @@ public class SandstoneMinerScript extends Script {
     }
 
     return random(150, 250);
+  }
+
+  private void ensureZoomConfigured() {
+    if (zoomConfigured) {
+      return;
+    }
+    if (getWidgetManager().getGameState() != com.osmb.api.ui.GameState.LOGGED_IN) {
+      return;
+    }
+    long now = System.currentTimeMillis();
+    if (now - lastZoomAttemptMs < ZOOM_RETRY_MS) {
+      return;
+    }
+    lastZoomAttemptMs = now;
+    var settings = getWidgetManager().getSettings();
+    if (settings == null) {
+      return;
+    }
+    var zoomResult = settings.getZoomLevel();
+    boolean alreadyMaxZoom = zoomResult.isFound() && zoomResult.get() == 0;
+    if (!alreadyMaxZoom) {
+      if (settings.setZoomLevel(0)) {
+        zoomConfigured = true;
+      }
+      return;
+    }
+    zoomConfigured = true;
   }
 
   public boolean isInventoryFull() {

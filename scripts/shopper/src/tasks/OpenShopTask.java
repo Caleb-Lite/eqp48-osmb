@@ -1,9 +1,6 @@
 package tasks;
 
-import com.osmb.api.location.position.types.WorldPosition;
-import com.osmb.api.shape.Polygon;
 import com.osmb.api.shape.Rectangle;
-import com.osmb.api.utils.UIResultList;
 import com.osmb.api.visual.SearchablePixel;
 import com.osmb.api.visual.color.ColorModel;
 import com.osmb.api.visual.color.tolerance.impl.SingleThresholdComparator;
@@ -13,6 +10,9 @@ import utils.Task;
 
 public class OpenShopTask extends Task {
     private final ShopperScript shopper;
+    private static final SearchablePixel[] CYAN_HIGHLIGHT = new SearchablePixel[] {
+        new SearchablePixel(-14155777, new SingleThresholdComparator(10), ColorModel.RGB)
+    };
 
     public OpenShopTask(ShopperScript script) {
         super(script);
@@ -72,44 +72,6 @@ public class OpenShopTask extends Task {
     }
 
     private Rectangle findCyanNpcBounds() {
-        UIResultList<WorldPosition> npcPositions = shopper.getWidgetManager().getMinimap().getNPCPositions();
-        if (npcPositions == null || npcPositions.isNotVisible()) {
-            return null;
-        }
-
-        SearchablePixel cyanPixel = new SearchablePixel(-14155777, new SingleThresholdComparator(10), ColorModel.RGB);
-        WorldPosition playerPos = shopper.getWorldPosition();
-        Rectangle closestBounds = null;
-        double closestDistance = Double.MAX_VALUE;
-
-        for (WorldPosition npcPosition : npcPositions) {
-            if (npcPosition == null) {
-                continue;
-            }
-
-            Polygon tileCube = shopper.getSceneProjector().getTileCube(npcPosition, 200);
-            if (tileCube == null) {
-                continue;
-            }
-
-            Polygon resized = tileCube.getResized(1.2);
-            if (resized == null) {
-                continue;
-            }
-
-            Rectangle highlightBounds = shopper.getPixelAnalyzer().getHighlightBounds(resized, cyanPixel);
-            if (highlightBounds != null) {
-                if (playerPos == null) {
-                    return highlightBounds;
-                }
-                double distance = playerPos.distanceTo(npcPosition);
-                if (distance < closestDistance) {
-                    closestDistance = distance;
-                    closestBounds = highlightBounds;
-                }
-            }
-        }
-
-        return closestBounds;
+        return shopper.getPixelAnalyzer().getHighlightBounds(null, CYAN_HIGHLIGHT);
     }
 }
